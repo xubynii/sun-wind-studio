@@ -1,5 +1,7 @@
 # Sun & Wind Studio
 
+![Pedestrian wind comfort over the downtown Vancouver site: Lawson bands in plan, green for sitting and standing comfort, amber where the wind reaches walking speeds](docs/hero.png)
+
 Early-design sun, wind, daylight, natural-ventilation and energy studies on a supertall tower in downtown Vancouver, in the browser. Upload a Rhino massing or generate one, then read how the form and its façade perform, at two levels of detail:
 
 | Phase | What it answers | Model shown |
