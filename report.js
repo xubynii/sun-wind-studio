@@ -35,8 +35,10 @@ async function make(kind){
   try{
     const out=await build(kind); if(!out) return;
     const dl=await getDownloads();
-    if(!dl){ toast('This viewer cannot save files. Open the artifact in claude.ai to download the report.',true); return; }
-    await dl.save({filename:out.filename,data:out.blob}); toast(`Saved ${out.filename} (${(out.blob.size/1024).toFixed(0)} KB).`);
+    if(dl){ await dl.save({filename:out.filename,data:out.blob}); toast(`Saved ${out.filename} (${(out.blob.size/1024).toFixed(0)} KB).`); return; }
+    // outside the claude.ai runtime (GitHub Pages, a local server, the desktop): a plain browser download
+    if(window.claude&&window.claude.use){ toast('This viewer cannot save files. Open the page in claude.ai or from its web address to download the report.',true); return; }
+    const url=URL.createObjectURL(out.blob); const a=document.createElement('a'); a.href=url; a.download=out.filename; a.rel='noopener'; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); },4000); toast(`Downloading ${out.filename} (${(out.blob.size/1024).toFixed(0)} KB).`);
   }catch(e){ if(e&&e.code==='declined') toast('Save cancelled.'); else { console.error(e); toast('Report failed: '+(e.message||e.code||e),true); } }
 }
 async function build(kind){
