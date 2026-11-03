@@ -294,6 +294,8 @@ h2 .help{order:0}
         <div id="lod-block" hidden>
         <h2>Uploaded model</h2>
         <div id="geom-info"></div>
+        <div class="sel-row"><label class="lvl">Ground level · model z <input type="number" id="up-grade" step="0.1" aria-label="Ground level in model z, metres"> m</label></div>
+        <p class="note">Geometry below this height is underground: basement floors are drawn below the site and left out of the sun, wind, daylight and energy studies. Model z = 0 is ground by default; enter a negative or positive value to move it.</p>
         <div class="checks one"><label class="check" for="c-raw"><input type="checkbox" id="c-raw" checked><span>Show and study the uploaded geometry as modeled rather than the sliced massing</span></label></div>
         <div class="actions"><button class="btn small adv" id="reslice" type="button">Change how the upload is sliced</button></div>
         <div class="legend"><span><i style="background:var(--mass)"></i>Massing</span><span><i style="background:var(--spandrel)"></i>Floor plates and spandrels</span><span><i style="background:var(--glass)"></i>Glazing</span><span><i style="background:var(--shade-dev)"></i>Shading devices</span><span><i style="background:var(--pv)"></i>PV</span><span><i style="background:var(--green)"></i>Green wall</span></div>

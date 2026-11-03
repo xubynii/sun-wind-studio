@@ -87,11 +87,11 @@ function applyImport(){
   const msg=[];
   if(ctx.length){ if($(ID('replace')).checked||!LAB.site){ applySite(ctx,pending.name); } else { levelTerrain(ctx); for(const m of ctx){ if(!m.isTerrain) m.layer=/herit/i.test(m.layerName||'')?'heritage':'existing'; LAB.site.meshes.push(m); } LAB.buildSite(); } msg.push(ctx.length+' context objects'+(terrain.length?' including '+terrain.length+' terrain surface'+(terrain.length>1?'s':'')+' (ground at the tower set to 0 m; the rain study will route run-off over it)':'')); }
   if(massing.length){
-    const U=voxelize(massing); LAB.upload=U; const S=LAB.S; S.typology='upload'; S.height=Math.round(U.top); S.step={mode:'none'}; S.overrides={}; S.voids=[];
+    const U=voxelize(massing); U.grade=U.minz<-0.3?Math.min(U.top-2.4,-U.minz):0; LAB.upload=U; const S=LAB.S; S.typology='upload'; S.height=Math.round(U.top-U.grade); S.step={mode:'none'}; S.overrides={}; S.voids=[];
     if(LAB.site&&LAB.site.site&&Math.hypot(U.cx,U.cy)<200){ S.posX=Math.round(U.cx); S.posY=Math.round(U.cy); } else { S.posX=0; S.posY=0; }
     S.rotDeg=0;
     LAB.uploadRaw={massing,shading,pv,cx:U.cx,cy:U.cy,minz:U.minz,name:pending.name,version:(LAB.uploadRaw?LAB.uploadRaw.version:0)+1};
-    msg.push(`massing from ${massing.length} objects: ${U.top.toFixed(0)} m tall, footprint about ${U.footprint.toLocaleString()} m²; ${LAB.uploadSummary()}`);
+    msg.push(`massing from ${massing.length} objects: ${(U.top-U.grade).toFixed(0)} m above ground${U.grade>0?' and '+U.grade.toFixed(1)+' m below (model z under 0 is treated as underground)':''}, footprint about ${U.footprint.toLocaleString()} m²; ${LAB.uploadSummary()}`);
     if(shading.length) msg.push(shading.length+' shading objects'); if(pv.length) msg.push(pv.length+' PV objects');
   } else if(shading.length||pv.length){ status('Shading and PV layers need a massing layer in the same file to attach to. Choose a massing layer and import again.',true); return; }
   LAB.update(); $(ID('dialog')).hidden=true; status(`Imported ${pending.name}: ${msg.join('; ')||'nothing selected'}.${inBase?' Coordinates were shifted from the base model onto the site centre.':''}${(shading.length||pv.length)?' Switch to Design development to study the modeled devices.':''}`); pending=null;
@@ -139,29 +139,37 @@ function detectLevels(meshes,minz,top,footprint){
 }
 /* re-run the plate scan on an uploaded model (the Design development slice step asks for it before slicing) */
 LAB.scanLevels=function(U){ U=U||LAB.upload; if(!U||!U.srcMeshes) return null; const keep=U.useLevels; Object.assign(U,detectLevels(U.srcMeshes,U.minz,U.top,U.footprint)); if(U.levels&&keep===false) U.useLevels=false; return U; };
+/* floors from the upload, split at the ground level: U.grade is the height of the ground above the model's lowest point (model z = 0 by default).
+   Floors above it become the tower studied by every tool; floors below it are basements, kept in LAB.belowFloors with negative z. */
 LAB.uploadFloors=function(S){
-  const U=LAB.upload, H=S.height, f=S.f2f; const out=[]; let z=0;
+  const U=LAB.upload, f=S.f2f; const g=Math.max(0,Math.min(U.top-2.4,U.grade||0)); const H=Math.max(2.4,Math.min(S.height,U.top-g)); const top=g+H;
   const baseArea=U.footprint; const c0=Math.sqrt(S.coreFrac*baseArea);
   const byLevels=!!(U.levels&&U.useLevels!==false); const L=byLevels?U.levels:null;
-  for(let i=0;i<220;i++){
-    const o=S.overrides[i]||{}; let h, probes;
-    if(byLevels){ if(i>=L.length) break; const z0=L[i], z1=i+1<L.length?L[i+1]:U.top; h=z1-z0; z=z0; if(h<1.8) continue; probes=[z0+Math.min(1.2,h*0.4),z0+Math.min(0.3,h*0.15),z0-0.12,z0+h*0.6]; }
-    else { h=o.h||f; if(z+h>H+1e-6) break; probes=[z+h/2]; }
-    const zm=z+h/2, t=zm/Math.max(1,H);
+  // candidate storeys in model coordinates (z0 from the model's base): file plates, or an even slice up and down from the ground
+  const slabs=[];
+  if(byLevels){ for(let i=0;i<L.length;i++){ const z0=L[i], z1=i+1<L.length?L[i+1]:U.top; const h=z1-z0; if(h<1.8) continue; slabs.push({z0,h,probes:[z0+Math.min(1.2,h*0.4),z0+Math.min(0.3,h*0.15),z0-0.12,z0+h*0.6]}); } }
+  else { let k=0; for(let z=g;z+f<=top+1e-6&&k<220;z+=f,k++){ const o=S.overrides[k]||{}; const h=o.h||f; slabs.push({z0:z,h,probes:[z+h/2],k}); if(h!==f) z+=h-f; } for(let z=g-f;z>=-1e-6;z-=f) slabs.unshift({z0:z,h:f,probes:[z+f/2]}); }
+  const out=[], below=[];
+  for(const sl of slabs){ const {z0,h,probes}=sl; const under=z0+h<=g+0.3; if(!under&&z0>=top-0.5) continue;
     let bx0=1e9,bx1=-1e9,by0=1e9,by1=-1e9; const cells=[];
     for(let iy=0;iy<U.ny;iy++) for(let ix=0;ix<U.nx;ix++){ const iv=U.ints[iy*U.nx+ix]; let inside=false; for(const p of iv){ for(const q of probes){ if(q>=p[0]&&q<=p[1]){ inside=true; break; } } if(inside) break; } if(inside){ cells.push(ix,iy); if(ix<bx0)bx0=ix; if(ix>bx1)bx1=ix; if(iy<by0)by0=iy; if(iy>by1)by1=iy; } }
-    if(!cells.length){ if(!byLevels){ z+=h; if(out.length) break; } continue; }
+    if(!cells.length) continue;
     const nx=bx1-bx0+1, ny=by1-by0+1, w=nx, d=ny, ux=U.x0+bx0+w/2, uy=U.y0+by0+d/2;
     const mask={nx,ny,x0:-w/2,y0:-d/2,cells:new Uint8Array(nx*ny)}; for(let k=0;k<cells.length;k+=2) mask.cells[(cells[k+1]-by0)*nx+(cells[k]-bx0)]=1;
-    const c=Math.max(6,Math.min(c0,Math.min(w,d)-8));
-    const a=S.rotDeg*Math.PI/180, P={x:S.posX+ux*Math.cos(a)-uy*Math.sin(a), y:S.posY+ux*Math.sin(a)+uy*Math.cos(a)};
-    out.push({i:out.length,z,h,t,ux,uy,urot:0,cx:P.x,cy:P.y,rot:a,w,d,seg:0,core:c,coreArea:c*c,edited:Object.keys(o).length>0,manual:!!o.prog,leaseMin:(Math.min(w,d)-c)/2,leaseMax:(Math.max(w,d)-c)/2,ext:w,mask});
-    if(!byLevels) z+=h;
-  }
-  if(!out.length){ LAB.upload=null; S.typology='prism'; return null; }
+    const c=Math.max(6,Math.min(c0,Math.min(w,d)-8)); const a=S.rotDeg*Math.PI/180, P={x:S.posX+ux*Math.cos(a)-uy*Math.sin(a), y:S.posY+ux*Math.sin(a)+uy*Math.cos(a)};
+    const z=under?z0-g:Math.max(0,z0-g), hh=under?h:Math.min(h,z0+h-Math.max(g,z0)); const o=(sl.k!=null&&S.overrides[sl.k])||{};
+    const fl={i:0,z,h:hh,t:Math.max(0,(z+hh/2)/Math.max(1,H)),ux,uy,urot:0,cx:P.x,cy:P.y,rot:a,w,d,seg:0,core:c,coreArea:c*c,edited:Object.keys(o).length>0,manual:!!o.prog,leaseMin:(Math.min(w,d)-c)/2,leaseMax:(Math.max(w,d)-c)/2,ext:w,mask,below:under};
+    if(under) below.push(fl); else { fl.i=out.length; out.push(fl); } }
+  below.forEach((fl,i)=>{ fl.i=i; fl.level='B'+(below.length-i); });
+  LAB.belowFloors=below;
+  if(!out.length){ LAB.upload=null; S.typology='prism'; LAB.belowFloors=[]; return null; }
   return out;
 };
-LAB.uploadSummary=function(){ const U=LAB.upload; if(!U) return ''; if(U.levels&&U.useLevels!==false) return `${U.plates} floor plates found in the file (typical ${U.typical.toFixed(1)} m storey); floors follow them`; if(U.levels) return `${U.plates} floor plates found but the mass is sliced at ${LAB.S.f2f} m`; return `solid mass, no floor plates found; sliced at ${LAB.S.f2f} m`; };
+/* the model's ground level in model z, and setting it: everything below becomes basement */
+LAB.groundZ=function(){ const U=LAB.upload; return U?U.minz+(U.grade||0):0; };
+LAB.setGroundZ=function(z){ const U=LAB.upload; if(!U) return; U.grade=Math.max(0,Math.min(U.top-2.4,z-U.minz)); LAB.S.height=Math.round(U.top-U.grade); LAB.update(); };
+LAB.uploadSummary=function(){ const U=LAB.upload; if(!U) return ''; const B=LAB.belowFloors||[]; const bs=B.length?` · ${B.length} basement level${B.length>1?'s':''} below ground (${Math.round(B.reduce((a,f)=>a+f.mask.cells.reduce((x,c)=>x+c,0),0)).toLocaleString()} m²), not studied`:''; return LAB._upSum()+bs; };
+LAB._upSum=function(){ const U=LAB.upload; if(!U) return ''; if(U.levels&&U.useLevels!==false) return `${U.plates} floor plates found in the file (typical ${U.typical.toFixed(1)} m storey); floors follow them`; if(U.levels) return `${U.plates} floor plates found but the mass is sliced at ${LAB.S.f2f} m`; return `solid mass, no floor plates found; sliced at ${LAB.S.f2f} m`; };
 
 /* ---------- upload UI ---------- */
 function status(msg,isErr){ const el=$(ID('status')); el.textContent=msg; el.style.color=isErr?'var(--warn)':'var(--muted)'; }
@@ -195,7 +203,7 @@ function applySite(meshes,name){
   LAB.buildSite(); LAB.update(); status(`Site replaced by ${name}: ${meshes.length||meshes.meshes.length} meshes. Restore the Vancouver site any time.`);
 }
 
-LAB.io={parseOBJ,parseJSON,parse3DM,applySite,showImportDialog,applyImport,status,init(){
+LAB.io={voxelize,parseOBJ,parseJSON,parse3DM,applySite,showImportDialog,applyImport,status,init(){
   $('file-in').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(f) handleFile(f); e.target.value=''; });
   $('import-apply').addEventListener('click',applyImport); $('import-cancel').addEventListener('click',()=>{ pending=null; $('import-dialog').hidden=true; status('Import cancelled.'); });
   // the Site tab takes a site model the same way; every layer becomes context or terrain
@@ -206,7 +214,8 @@ LAB.io={parseOBJ,parseJSON,parse3DM,applySite,showImportDialog,applyImport,statu
   const drop=$('drop'); drop.addEventListener('dragover',e=>{ e.preventDefault(); drop.classList.add('over'); }); drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
   drop.addEventListener('drop',e=>{ e.preventDefault(); drop.classList.remove('over'); const f=e.dataTransfer.files&&e.dataTransfer.files[0]; if(f) handleFile(f); });
   $('restore-site').addEventListener('click',()=>{ fetch('site.json').then(r=>r.json()).then(j=>{ LAB.site=j; LAB.buildSite(); LAB.update(); siteMode=true; $('site-file-name').textContent='Vancouver Tall Base Model'; status('Vancouver competition site restored.'); }); });
-  $('clear-upload').addEventListener('click',()=>{ LAB.upload=null; LAB.uploadRaw=null; const S=LAB.S; if(S.typology==='upload'){ S.typology='taper'; Object.assign(S,LAB.TYP.taper.defaults); S.height=280; } $('file-name').textContent='no file chosen'; LAB.update(); status('Uploaded model removed; the generated massing is back.'); });
+  $('up-grade').addEventListener('change',e=>{ const v=parseFloat(e.target.value); if(isFinite(v)&&LAB.upload){ LAB.setGroundZ(v); status(`Ground level set at model z ${v.toFixed(1)} m: ${(LAB.belowFloors||[]).length} floors below ground, ${LAB.floors?LAB.floors.length:0} above.`); } });
+  $('clear-upload').addEventListener('click',()=>{ LAB.upload=null; LAB.uploadRaw=null; LAB.belowFloors=[]; const S=LAB.S; if(S.typology==='upload'){ S.typology='taper'; Object.assign(S,LAB.TYP.taper.defaults); S.height=280; } $('file-name').textContent='no file chosen'; LAB.update(); status('Uploaded model removed; the generated massing is back.'); });
   rhino().then(m=>{ status(m?'Ready. rhino3dm loaded: choose a .3dm and its layers will be listed.':'Ready. rhino3dm did not load here, so .3dm import is off; .obj and .json still work.'); });
 }};
 })();

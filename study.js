@@ -204,6 +204,13 @@ class Batch{ constructor(){ this.p=[]; this.n=[]; }
     quad([a,b,-h],[-a,b,-h],[-a,b,h],[a,b,h],[0,1,0]); quad([-a,-b,-h],[a,-b,-h],[a,-b,h],[-a,-b,h],[0,-1,0]);
     quad([-a,-b,h],[a,-b,h],[a,b,h],[-a,b,h],[0,0,1]); quad([-a,b,-h],[a,b,-h],[a,-b,-h],[-a,-b,-h],[0,0,-1]); }
   mesh(mat,ud){ if(!this.p.length) return null; const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(this.p,3)); g.setAttribute('normal',new THREE.Float32BufferAttribute(this.n,3)); const m=new THREE.Mesh(g,mat); m.castShadow=true; m.receiveShadow=true; Object.assign(m.userData,ud||{}); return m; } }
+/* ---------- basements: floors below the ground level of an uploaded model, drawn as a translucent stack under the site ---------- */
+const belowGroup=new THREE.Group(); LAB.scene.add(belowGroup); const BELOW_MAT=new THREE.MeshLambertMaterial({color:new THREE.Color('#8C7A66'),transparent:true,opacity:0.55,depthWrite:false});
+function buildBelow(){ clearGroup(belowGroup); const B=(LAB.S.typology==='upload'&&LAB.belowFloors)||[]; const G=LAB.ground;
+  if(G&&G.material){ G.material.transparent=B.length>0; G.material.opacity=B.length?0.72:1; G.material.needsUpdate=true; }
+  if(!B.length){ LAB.requestRender(); return; } const body=new Batch();
+  for(const f of B){ const m=f.mask, hh=f.h-GAP; for(let iy=0;iy<m.ny;iy++){ let ix=0; while(ix<m.nx){ if(!m.cells[iy*m.nx+ix]){ ix++; continue; } let j=ix; while(j+1<m.nx&&m.cells[iy*m.nx+j+1]) j++; const lx=m.x0+(ix+j+1)/2, ly=m.y0+iy+0.5; const p=LAB.toWorld(f,lx,ly); body.box(p.x,p.y,f.z+hh/2,j-ix+1,1,hh,f.rot); ix=j+1; } } }
+  const mesh=body.mesh(BELOW_MAT,{below:true}); if(mesh){ mesh.castShadow=false; mesh.receiveShadow=false; mesh.renderOrder=1; belowGroup.add(mesh); } LAB.requestRender(); }
 function buildAdv(){
   const R=LAB.uploadRaw; if(!R){ advGroup.visible=false; return; }
   if(advVersion!==R.version){
@@ -214,7 +221,7 @@ function buildAdv(){
       const mesh=new THREE.Mesh(g,MAT[cat]); mesh.userData.cat=cat; mesh.castShadow=true; mesh.receiveShadow=true; advGroup.add(mesh); }
     advVersion=R.version;
   }
-  const S=LAB.S; advGroup.position.set(S.posX,0,-S.posY); advGroup.rotation.y=S.rotDeg*Math.PI/180;
+  const S=LAB.S; advGroup.position.set(S.posX,-((LAB.upload&&LAB.upload.grade)||0),-S.posY); advGroup.rotation.y=S.rotDeg*Math.PI/180;
 }
 function sameFloor(a,b){ if(a.w!==b.w||a.d!==b.d||a.h!==b.h||Math.abs(a.ux-b.ux)>1e-6||Math.abs(a.uy-b.uy)>1e-6||Math.abs(a.urot-b.urot)>1e-6) return false; const ma=a.mask,mb=b.mask; if(ma.nx!==mb.nx||ma.ny!==mb.ny) return false; for(let k=0;k<ma.cells.length;k++) if(ma.cells[k]!==mb.cells[k]) return false; return true; }
 function buildLOD(){
@@ -274,7 +281,7 @@ function flattenLabels(){
 function syncGeometry(){
   applyColors(); buildAdv(); const raw=useRaw();
   LAB.towerGroup.visible=false; advGroup.visible=raw; for(const o of advGroup.children) o.visible=o.userData.cat==='tower'||adv();
-  lodGroup.visible=!raw; buildLOD(); dressGroup.visible=adv();
+  lodGroup.visible=!raw; buildLOD(); buildBelow(); dressGroup.visible=adv();
   LAB.requestRender();
 }
 function towerGroups(){ return useRaw()?[advGroup,dressGroup]:[lodGroup,dressGroup]; }
@@ -353,7 +360,7 @@ function runSunStudy(){
   const prevClear=new THREE.Color(); R.getClearColor(prevClear); const prevAlpha=R.getClearAlpha();
   const prev={shadow:R.shadowMap.enabled,cast:LAB.sun.castShadow,hemi:LAB.hemi.intensity,sunI:LAB.sun.intensity,bg:LAB.scene.background,ground:LAB.ground.material,ov:overlayMesh?overlayMesh.visible:false};
   R.shadowMap.enabled=true; LAB.sun.castShadow=true; LAB.hemi.intensity=0; LAB.sun.intensity=1; LAB.scene.background=null; R.setClearColor(0x000000,0); if(overlayMesh) overlayMesh.visible=false;
-  const hiddenObjs=[]; LAB.scene.traverse(o=>{ if((o.isLine||o.isPoints||o.isSprite||o.userData.labelPlane)&&o.visible){ o.visible=false; hiddenObjs.push(o); } });
+  const hiddenObjs=[]; LAB.scene.traverse(o=>{ if((o.isLine||o.isPoints||o.isSprite||o.userData.labelPlane||o.userData.below)&&o.visible){ o.visible=false; hiddenObjs.push(o); } });
   const N=sunRes.w*sunRes.h; const scope=(sd.scope==='period')?'period':'date'; const PI=periodInfo();
   let days;
   if(scope==='period'){ const nS=PI.days<=3?PI.days:(PI.days<=45?Math.max(3,Math.ceil(PI.days/4)):12); days=[];
@@ -414,7 +421,7 @@ function exposurePass(alt,azDeg){
   const prevClear=new THREE.Color(); R.getClearColor(prevClear); const prevAlpha=R.getClearAlpha();
   const prev={shadow:R.shadowMap.enabled,cast:LAB.sun.castShadow,hemi:LAB.hemi.intensity,sunI:LAB.sun.intensity,bg:LAB.scene.background,ground:LAB.ground.material,ov:overlayMesh?overlayMesh.visible:false};
   R.shadowMap.enabled=true; LAB.sun.castShadow=true; LAB.hemi.intensity=0; LAB.sun.intensity=1; LAB.scene.background=null; R.setClearColor(0x000000,0); if(overlayMesh) overlayMesh.visible=false;
-  const hiddenObjs=[]; LAB.scene.traverse(o=>{ if((o.isLine||o.isPoints||o.isSprite||o.userData.labelPlane)&&o.visible){ o.visible=false; hiddenObjs.push(o); } });
+  const hiddenObjs=[]; LAB.scene.traverse(o=>{ if((o.isLine||o.isPoints||o.isSprite||o.userData.labelPlane||o.userData.below)&&o.visible){ o.visible=false; hiddenObjs.push(o); } });
   let out=null, err=null;
   try{ const r=sunDay(0,0,0,0,ctx,[{h:0,p:{alt,az:azDeg*Math.PI/180}}]); const H=r.hourly[0]||null; out={shade:r.v,A:H?H.A:null,Az:H?H.Az:null,nF,lostA:r.lostWh,pxArea:(920/512)*(920/512)}; }catch(e){ err=e; }
   R.setRenderTarget(null); LAB.scene.overrideMaterial=null; R.shadowMap.enabled=prev.shadow; LAB.sun.castShadow=prev.cast; LAB.hemi.intensity=prev.hemi; LAB.sun.intensity=prev.sunI; LAB.scene.background=prev.bg; LAB.ground.material=prev.ground; R.setClearColor(prevClear,prevAlpha);
@@ -703,7 +710,7 @@ function syncUI(){
   syncReportUI();
 }
 function updateGeomInfo(){ const R=LAB.uploadRaw; const el=$('geom-info'); $('lod-block').hidden=!R;
-  if(!R){ el.innerHTML=''; return; }
+  if(!R){ el.innerHTML=''; return; } const gi=$('up-grade'); if(gi&&document.activeElement!==gi&&LAB.groundZ) gi.value=LAB.groundZ().toFixed(1);
   el.innerHTML=`<p class="blurb" style="margin-top:0"><b>${R.name}</b>: ${R.massing.length} massing object${R.massing.length>1?'s':''}, ${R.shading.length} shading, ${R.pv.length} PV${R.pv.length?' ('+fmtI(meshArea(R.pv))+' m²)':''}. ${useRaw()?(adv()?'Shown and studied as modeled with every layer, so fins, overhangs, balconies and voids in the file shade the façades; zone devices are added on top.':'Shown and studied as the massing layer alone; switch to Design development to bring in the shading and PV layers.'):'Shown and studied as the sliced massing; turn the modeled geometry on to use the file itself.'}</p><p class="blurb"><b>Floors:</b> ${LAB.uploadSummary?LAB.uploadSummary():''} · ${LAB.floors?LAB.floors.length:0} floors in the study.</p>`;
   $('reslice').hidden=!adv(); if(LAB.help) LAB.help.apply(el);
 }
