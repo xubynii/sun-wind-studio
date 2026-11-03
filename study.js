@@ -256,8 +256,8 @@ function applySunView(){
   const sd=LAB.S.impact.sun, D=DATES[sd.date]; const p=sunPos(D.doy,sd.hour,D.tz);
   const on=LAB.S.impact.mode==='sun';
   LAB.renderer.shadowMap.enabled=on; LAB.sun.castShadow=on;
-  if(on&&p.alt>0.01){ setSunLight(p); LAB.sun.intensity=0.4+0.6*Math.sin(p.alt); LAB.hemi.intensity=0.6; }
-  else { LAB.sun.position.set(260,520,180); LAB.sun.intensity=0.75; LAB.hemi.intensity=0.95; }
+  if(on&&p.alt>0.01){ setSunLight(p); LAB.sun.intensity=0.35+0.45*Math.sin(p.alt); LAB.hemi.intensity=0.5; }
+  else { LAB.sun.position.set(260,520,180); LAB.sun.intensity=0.5; LAB.hemi.intensity=0.7; }
   if(shadowState!==on){ shadowState=on; LAB.scene.traverse(o=>{ if(o.material&&o.material.needsUpdate!==undefined) o.material.needsUpdate=true; }); }
   LAB.requestRender();
   return p;
@@ -647,7 +647,8 @@ function setStudioMode(m){ if(SW.mode===m) return; SW.mode=m; persist(); documen
   if(sunResult){ stale.sun=true; } if(windResult&&(!!windResult.strat)!==stratActive()){ stale.wind=true; } showStale(); syncUI(); updateGeomInfo(); rerender(); }
 function setMode(m){ if(LAB.S.impact.mode===m) return; const wasRain=LAB.S.impact.mode==='rain'; LAB.S.impact.mode=m; syncUI(); clearOverlay(); applySunView(); if((m==='rain')!==wasRain){ LAB.S.water.on=(m==='rain'); LAB.update(); } if(!busy) runCurrent(false); persist(); }
 function onTab(name){ if(['strat','daylight','vent','energy'].includes(name)&&!adv()){ LAB.tabs.show(name==='energy'?'eff':'sun'); return; } if((name==='sun'||name==='wind'||name==='eff')&&adv()){ LAB.tabs.show(name==='sun'?'daylight':(name==='wind'?'vent':'energy')); return; }
-  const was=curTab; curTab=name; $('period-block').hidden=!['sun','wind','strat','daylight','vent','report','rain'].includes(name); if(name==='sun'||name==='daylight') setMode('sun'); if(name==='wind'||name==='vent') setMode('wind'); if(name==='rain') setMode('rain'); if(name==='strat'&&LAB.S.impact.mode==='none') setMode('sun'); if(name==='report') syncReportUI(); if(!adv()&&(name==='eff'||was==='eff')) rerender(); }
+  const was=curTab; curTab=name; const pb=$('period-block'); pb.hidden=!['sun','wind','strat','daylight','vent','report','rain'].includes(name);
+  if(!pb.hidden){ const sec=document.querySelector('.tab[data-tab="'+name+'"]'); const h=sec&&sec.querySelector('h1.ptitle'); if(h&&h.nextElementSibling!==pb) h.insertAdjacentElement('afterend',pb); } if(name==='sun'||name==='daylight') setMode('sun'); if(name==='wind'||name==='vent') setMode('wind'); if(name==='rain') setMode('rain'); if(name==='strat'&&LAB.S.impact.mode==='none') setMode('sun'); if(name==='report') syncReportUI(); if(!adv()&&(name==='eff'||was==='eff')) rerender(); }
 function syncUI(){
   for(const m of ['sun','wind']) LAB.syncFor($('params-'+m),MODE_P[m],'im'+m,LAB.S.impact[m]);
   const sd=LAB.S.impact.sun; const dateCtl=document.querySelector('#params-sun [data-param="date"]'); if(dateCtl) dateCtl.querySelector('label').textContent=sd.scope==='date'?'Date':'Date shown in the viewport';
@@ -696,7 +697,9 @@ function energyChanged(){ persist(); rerender(); }
 function energySection(){ if(!LAB.energy||!LAB.floors) return ''; try{ return adv()?LAB.energy.energyHTML():LAB.energy.formHTML(); }catch(e){ console.error(e); return ''; } }
 function setOut(kind,html){ sections[kind]=html; const out=$('impact-out'); const pb=document.getElementById('plan-block'); tMap=null;
   if(adv()){ out.hidden=false; const en=energySection(); out.innerHTML=reportHead()+'<div id="plan-slot"></div>'+sections.sun+sections.wind+sections.rain+en; const slot=document.getElementById('plan-slot'); if(slot&&pb) slot.appendChild(pb); }
-  else { out.hidden=false; out.innerHTML=curTab==='eff'?energySection():html; const home=document.getElementById('plan-home'); if(pb&&home&&pb.parentNode!==home) home.appendChild(pb); }
+  else { out.hidden=false; const S=LAB.S, floors=LAB.floors||[]; const name=S.typology==='upload'&&LAB.uploadRaw?LAB.uploadRaw.name:LAB.TYP[S.typology].name; const what=curTab==='eff'?'Massing efficiency':(kind==='sun'?'Sun and shadow':kind==='wind'?'Pedestrian wind':'Rain');
+    const r=kind==='sun'?sunResult:(kind==='wind'?windResult:(LAB.rain&&LAB.rain.result)); const head=`<div class="report-head"><div class="rh-title"><h2 style="margin:0">Site impact · ${what}</h2><span class="rh-meta">${name} · ${S.height} m · ${floors.length} floors · ${curTab==='eff'?'live from the massing':(r?'run '+fmtTime(r.at):'not yet run')}${!curTab.match(/eff/)&&stale[kind]&&r?' · <span class="rh-stale">settings changed, run again</span>':''}</span></div></div>`;
+    out.innerHTML=head+(curTab==='eff'?energySection():html); const home=document.getElementById('plan-home'); if(pb&&home&&pb.parentNode!==home) home.appendChild(pb); }
   if(LAB.help) LAB.help.apply(out); }
 function fmtTime(t){ if(!t) return 'not yet run'; const d=new Date(t); return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }
 function reportHead(){
