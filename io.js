@@ -114,7 +114,7 @@ function voxelize(meshes){
   const ints=new Array(nx*ny); let any=0;
   for(let k=0;k<nx*ny;k++){ const zs=cols[k].sort((p,q)=>p-q); const iv=[]; for(let i=0;i+1<zs.length;i+=2){ if(zs[i+1]-zs[i]>0.15) iv.push([zs[i],zs[i+1]]); } if(zs.length===1) iv.push([0,zs[0]]); ints[k]=iv; if(iv.length) any++; }
   if(!any) throw new Error('The model has no closed volumes to slice. Make sure the massing is a closed mesh or polysurface.');
-  const U={nx,ny,x0,y0,ints,top:maxz-minz,base:0,footprint:any,cx,cy,minz};
+  const U={nx,ny,x0,y0,ints,top:maxz-minz,base:0,footprint:any,cx,cy,minz,srcMeshes:meshes};
   Object.assign(U,detectLevels(meshes,minz,maxz-minz,any));
   return U;
 }
@@ -125,17 +125,20 @@ function detectLevels(meshes,minz,top,footprint){
   for(const m of meshes) for(let i=0;i<m.f.length;i+=3){ const a=m.f[i]*3,b=m.f[i+1]*3,c=m.f[i+2]*3;
     const ux=m.v[b]-m.v[a],uy=m.v[b+1]-m.v[a+1],uz=m.v[b+2]-m.v[a+2],vx=m.v[c]-m.v[a],vy=m.v[c+1]-m.v[a+1],vz=m.v[c+2]-m.v[a+2];
     const nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx; const len=Math.hypot(nx,ny,nz); if(len<1e-6||nz<0.95*len) continue;
-    const z=(m.v[a+2]+m.v[b+2]+m.v[c+2])/3-minz; const k=Math.round(z/bin); hist.set(k,(hist.get(k)||0)+len/2); }
+    const z=(m.v[a+2]+m.v[b+2]+m.v[c+2])/3-minz; const k=Math.round(z/bin); const e=hist.get(k)||[0,0]; e[0]+=len/2; e[1]+=len/2*z; hist.set(k,e); }
   const keys=[...hist.keys()].sort((p,q)=>p-q); const clusters=[]; let cur=null;
-  for(const k of keys){ const A=hist.get(k); if(cur&&k-cur.last<=2){ cur.area+=A; cur.zw+=A*k*bin; cur.last=k; } else { cur={area:A,zw:A*k*bin,last:k}; clusters.push(cur); } }
-  const levels=clusters.filter(c=>c.area>=0.2*footprint).map(c=>c.zw/c.area).filter(z=>z>=-0.05&&z<top-1.0).sort((p,q)=>p-q);
-  const merged=[]; for(const z of levels){ if(!merged.length||z-merged[merged.length-1]>1.5) merged.push(z); }
+  for(const k of keys){ const [A,ZW]=hist.get(k); if(cur&&k-cur.last<=2){ cur.area+=A; cur.zw+=ZW; cur.last=k; } else { cur={area:A,zw:ZW,last:k}; clusters.push(cur); } }
+  const horiz=clusters.length; const levels=clusters.filter(c=>c.area>=0.2*footprint).map(c=>c.zw/c.area).filter(z=>z>=-0.05&&z<top-1.0).sort((p,q)=>p-q);
+  const merged=[]; for(const z of levels){ if(!merged.length||z-merged[merged.length-1]>1.0) merged.push(z); }
   if(!merged.length||Math.abs(merged[0])>0.6) merged.unshift(0);
-  const interior=merged.filter(z=>z>0.6); if(interior.length<3) return {levels:null,plates:0};
+  const interior=merged.filter(z=>z>0.6); const scan={horiz,candidates:merged.length,interior:interior.length};
+  if(interior.length<3) return {levels:null,plates:interior.length,typical:0,useLevels:false,scan,reason:interior.length?`only ${interior.length} horizontal plate${interior.length>1?'s':''} above the base cover${interior.length>1?'':'s'} a fifth of the footprint`:`no horizontal faces above the base cover a fifth of the footprint (${horiz} horizontal face level${horiz===1?'':'s'} seen)`};
   const gaps=[]; for(let i=1;i<merged.length;i++) gaps.push(merged[i]-merged[i-1]); gaps.sort((p,q)=>p-q); const med=gaps[Math.floor(gaps.length/2)];
-  if(med<2.4||med>9) return {levels:null,plates:interior.length};
-  return {levels:merged,plates:interior.length,typical:med,useLevels:true};
+  if(med<2.4||med>9) return {levels:null,plates:interior.length,typical:med,useLevels:false,scan,reason:`${interior.length} plates found but their typical spacing of ${med.toFixed(1)} m is not a storey height (2.4–9 m)`};
+  return {levels:merged,plates:interior.length,typical:med,useLevels:true,scan,reason:null,span:[merged[1],merged[merged.length-1]],gaps:[gaps[0],gaps[gaps.length-1]]};
 }
+/* re-run the plate scan on an uploaded model (the Design development slice step asks for it before slicing) */
+LAB.scanLevels=function(U){ U=U||LAB.upload; if(!U||!U.srcMeshes) return null; const keep=U.useLevels; Object.assign(U,detectLevels(U.srcMeshes,U.minz,U.top,U.footprint)); if(U.levels&&keep===false) U.useLevels=false; return U; };
 LAB.uploadFloors=function(S){
   const U=LAB.upload, H=S.height, f=S.f2f; const out=[]; let z=0;
   const baseArea=U.footprint; const c0=Math.sqrt(S.coreFrac*baseArea);

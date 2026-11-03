@@ -608,8 +608,15 @@ function showStale(){ if(busy) return; $('run-sun').textContent=stale.sun?'Run s
 function renderRain(){ try{ setOut('rain',LAB.rain?LAB.rain.html():''); }catch(e){ console.error(e); } }
 /* an uploaded mass entering Design development: ask whether to slice it into floors, or keep the plates found in the file */
 function maybeSliceDialog(){ const U=LAB.upload; const dlg=$('slice-dialog'); if(!adv()||!U||LAB.S.typology!=='upload'){ dlg.hidden=true; return; } SW.sliceOK=SW.sliceOK||{}; const key=String(LAB.uploadRaw?LAB.uploadRaw.version:0); if(SW.sliceOK[key]){ dlg.hidden=true; return; }
-  $('slice-f2f').value=LAB.S.f2f; $('slice-text').textContent=U.levels?`The file holds ${U.plates} floor plates at a typical ${U.typical.toFixed(1)} m storey. Design development studies work floor by floor: use those plates, or slice the mass evenly instead.`:`Your upload is a solid mass with no floor plates. Design development studies the interior floor by floor, so the mass has to be sliced: ${Math.floor(U.top/LAB.S.f2f)} floors at ${LAB.S.f2f} m, or set another floor-to-floor height.`;
-  $('slice-keep').hidden=!U.levels; dlg.hidden=false; LAB.tabs.show('model'); }
+  // 1. scan the model for floor plates; 2. offer them, or an even slice at the set floor-to-floor height when there are none
+  $('slice-f2f').value=LAB.S.f2f; $('slice-text').textContent='Scanning the model for floor plates…'; $('slice-apply').hidden=true; $('slice-keep').hidden=true; $('slice-row').hidden=true; dlg.hidden=false; LAB.tabs.show('model');
+  setTimeout(()=>{ try{ if(LAB.scanLevels) LAB.scanLevels(U); }catch(e){ console.error(e); } sliceText(); },60); }
+function sliceText(){ const U=LAB.upload; if(!U) return; const f=parseFloat($('slice-f2f').value)||LAB.S.f2f; const n=Math.max(1,Math.floor(U.top/f)); const sc=U.scan||{};
+  if(U.levels){ $('slice-text').textContent=`Scan found ${U.plates} floor plates in the file: horizontal faces covering a fifth or more of the footprint at ${U.span?U.span[0].toFixed(1)+'–'+U.span[1].toFixed(1)+' m':'several heights'}, typical storey ${U.typical.toFixed(1)} m${U.gaps?' (from '+U.gaps[0].toFixed(1)+' to '+U.gaps[1].toFixed(1)+' m)':''}. Design development studies the interior floor by floor: use these plates, or slice the mass evenly instead.`;
+    $('slice-keep').textContent=`Use the ${U.plates} floor plates found`; $('slice-keep').hidden=false; $('slice-apply').textContent=`Slice evenly into ${n} floors at ${f} m instead`; $('slice-apply').classList.remove('primary'); $('slice-keep').classList.add('primary'); }
+  else { $('slice-text').textContent=`Scan found no usable floor plates: ${U.reason||'the model is a solid mass'}. The mass will be sliced at a set floor-to-floor height instead: ${n} floors at ${f} m from a ${U.top.toFixed(0)} m model.`;
+    $('slice-keep').hidden=true; $('slice-apply').textContent=`Slice into ${n} floors at ${f} m`; $('slice-apply').classList.add('primary'); }
+  $('slice-apply').hidden=false; $('slice-row').hidden=false; }
 function sliceDecision(useLevels){ const U=LAB.upload; if(!U) return; SW.sliceOK=SW.sliceOK||{}; SW.sliceOK[String(LAB.uploadRaw?LAB.uploadRaw.version:0)]=true; const f=parseFloat($('slice-f2f').value); if(!useLevels&&f>=2.4&&f<=9){ LAB.S.f2f=f; } U.useLevels=!!useLevels&&!!U.levels; $('slice-dialog').hidden=true; persist(); LAB.update(); updateGeomInfo(); }
 const live=()=>{ persist(); syncGeometry(); if(adv()){ if(sunResult) stale.sun=true; if(windResult) stale.wind=true; showStale(); } rerender(); };
 function buildZoneUI(){
@@ -655,7 +662,7 @@ function buildUI(){
   $('view-wind').addEventListener('click',()=>{ const on=LAB.S.impact.mode!=='wind'; setMode(on?'wind':'none'); if(on) LAB.tabs.show('wind'); });
   $('view-rain').addEventListener('click',()=>{ const on=LAB.S.impact.mode!=='rain'; setMode(on?'rain':'none'); if(on) LAB.tabs.show('rain'); });
   $('run-rain').addEventListener('click',()=>{ setMode('rain'); if(!busy) runStudy('rain'); });
-  $('slice-apply').addEventListener('click',()=>sliceDecision(false)); $('slice-keep').addEventListener('click',()=>sliceDecision(true));
+  $('slice-apply').addEventListener('click',()=>sliceDecision(false)); $('slice-keep').addEventListener('click',()=>sliceDecision(true)); $('slice-f2f').addEventListener('input',()=>{ if(!$('slice-dialog').hidden) sliceText(); });
   $('reslice').addEventListener('click',()=>{ SW.sliceOK=SW.sliceOK||{}; delete SW.sliceOK[String(LAB.uploadRaw?LAB.uploadRaw.version:0)]; maybeSliceDialog(); if(!adv()) LAB.toast&&LAB.toast('Slicing options open in Design development.'); });
   if(LAB.rain) LAB.rain.buildUI();
   // true views: the core's handlers run first and set the orbit; these refine them
