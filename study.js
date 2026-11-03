@@ -676,9 +676,8 @@ function syncUI(){
   $('mode-banner').innerHTML=adv()?'<b>Design review</b> · the façade zones drive the model, the floor plan and the LEED v4.1 readings below. Edits re-read the façade instantly; a flag appears when daylight or ventilation need a rerun.':'<b>Site impact</b> · massing phase: how the form shades neighbours and plazas, how much sun it takes and receives, and how it changes the wind at street level. The model is shown as solid blocks.';
   syncReportUI();
 }
-function updateGeomInfo(){ const R=LAB.uploadRaw; const el=$('geom-info');
-  if(!R){ el.innerHTML='<p class="empty">No uploaded model. The generated massing is drawn as blocks in Basic and as floors with the zoned façade in Advanced.</p>'; $('c-raw').closest('label').style.opacity='.45'; return; }
-  $('c-raw').closest('label').style.opacity='1';
+function updateGeomInfo(){ const R=LAB.uploadRaw; const el=$('geom-info'); $('lod-block').hidden=!R;
+  if(!R){ el.innerHTML=''; return; }
   el.innerHTML=`<p class="blurb" style="margin-top:0"><b>${R.name}</b>: ${R.massing.length} massing object${R.massing.length>1?'s':''}, ${R.shading.length} shading, ${R.pv.length} PV${R.pv.length?' ('+fmtI(meshArea(R.pv))+' m²)':''}. ${useRaw()?(adv()?'Shown and studied as modeled with every layer, so fins, overhangs, balconies and voids in the file shade the façades; zone devices are added on top.':'Shown and studied as the massing layer alone; switch to Design development to bring in the shading and PV layers.'):'Shown and studied as the sliced massing; turn the modeled geometry on to use the file itself.'}</p><p class="blurb"><b>Floors:</b> ${LAB.uploadSummary?LAB.uploadSummary():''} · ${LAB.floors?LAB.floors.length:0} floors in the study.</p>`;
   $('reslice').hidden=!adv(); if(LAB.help) LAB.help.apply(el);
 }
