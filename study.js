@@ -666,7 +666,7 @@ function updateGeomInfo(){ const R=LAB.uploadRaw; const el=$('geom-info');
   if(!R){ el.innerHTML='<p class="empty">No uploaded model. The generated massing is drawn as blocks in Basic and as floors with the zoned façade in Advanced.</p>'; $('c-raw').closest('label').style.opacity='.45'; return; }
   $('c-raw').closest('label').style.opacity='1';
   el.innerHTML=`<p class="blurb" style="margin-top:0"><b>${R.name}</b>: ${R.massing.length} massing object${R.massing.length>1?'s':''}, ${R.shading.length} shading, ${R.pv.length} PV${R.pv.length?' ('+fmtI(meshArea(R.pv))+' m²)':''}. ${useRaw()?(adv()?'Shown and studied as modeled with every layer, so fins, overhangs, balconies and voids in the file shade the façades; zone devices are added on top.':'Shown and studied as the massing layer alone; switch to Design development to bring in the shading and PV layers.'):'Shown and studied as the sliced massing; turn the modeled geometry on to use the file itself.'}</p><p class="blurb"><b>Floors:</b> ${LAB.uploadSummary?LAB.uploadSummary():''} · ${LAB.floors?LAB.floors.length:0} floors in the study.</p>`;
-  $('reslice').hidden=!adv();
+  $('reslice').hidden=!adv(); if(LAB.help) LAB.help.apply(el);
 }
 /* one study as a promise: the sun render (plus daylight and ASE in Advanced) or the wind flow (plus ventilation in Advanced) */
 function progressTo(kind,msg){ $('run-'+kind).textContent=msg; $('run-all-status').textContent=msg; $(kind==='sun'?'run-daylight-status':kind==='wind'?'run-vent-status':'run-rain-status').textContent=msg; $('run-active').textContent=msg; $('run-active').disabled=true; }
@@ -696,7 +696,8 @@ function energyChanged(){ persist(); rerender(); }
 function energySection(){ if(!LAB.energy||!LAB.floors) return ''; try{ return adv()?LAB.energy.energyHTML():LAB.energy.formHTML(); }catch(e){ console.error(e); return ''; } }
 function setOut(kind,html){ sections[kind]=html; const out=$('impact-out'); const pb=document.getElementById('plan-block'); tMap=null;
   if(adv()){ out.hidden=false; const en=energySection(); out.innerHTML=reportHead()+'<div id="plan-slot"></div>'+sections.sun+sections.wind+sections.rain+en; const slot=document.getElementById('plan-slot'); if(slot&&pb) slot.appendChild(pb); }
-  else { out.hidden=false; out.innerHTML=curTab==='eff'?energySection():html; const home=document.getElementById('plan-home'); if(pb&&home&&pb.parentNode!==home) home.appendChild(pb); } }
+  else { out.hidden=false; out.innerHTML=curTab==='eff'?energySection():html; const home=document.getElementById('plan-home'); if(pb&&home&&pb.parentNode!==home) home.appendChild(pb); }
+  if(LAB.help) LAB.help.apply(out); }
 function fmtTime(t){ if(!t) return 'not yet run'; const d=new Date(t); return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }
 function reportHead(){
   const S=LAB.S, floors=LAB.floors||[]; const gfa=floors.reduce((s,f)=>s+f.area,0); const PI=periodInfo(); const sd=S.impact.sun, W=S.impact.wind;
@@ -976,7 +977,7 @@ function renderPlan(){
   else { legend=`<span><i style="background:var(--wind);opacity:.6"></i>Ventilated by the wind</span>`+faces;
     stats=st('Ventilated floor',R.windowsOpen?fmtI(R.aVent)+' m² <em>'+pct(R.aVent)+'</em>':'windows closed')+st('Air changes',R.windowsOpen&&R.ach>0?R.ach.toFixed(1)+' /h <em>wind '+R.Qw.toFixed(1)+(R.Qs?' + stack '+R.Qs.toFixed(1):'')+' m³/s</em>':'–')+st('Within 8 m of an opening',pct(R.aWithin8)+' <em>ASHRAE 62.1 zone</em>')+st('Free opening area',R.freePct.toFixed(1)+'% of floor <em>'+(R.freePct>=4?'meets':'below')+' the 4% rule</em>')+st('Wind at this level',R.Uz.toFixed(1)+' m/s <em>from '+R.wdir+'°'+(R.windowsOpen?'':' · gusts over '+R.umax.toFixed(0)+' m/s')+'</em>')+st('Depth rule',R.mode==='cross'?'5 H = '+R.limCross+' m <em>cross</em>':R.mode==='single'?'2.5 H = '+R.limSingle+' m <em>single-sided</em>':'12 m <em>stack</em>');
     note=`${R.mode==='cross'?'Cross ventilation (CIBSE AM10): a cell is ventilated when air can enter through an operable windward face (Cp +0.7) and leave through an operable side or leeward face (Cp −0.5 / −0.3) within five floor heights of the inlet, without meeting the core. Flow Q = 0.6 · A · U · √ΔCp.':R.mode==='single'?'Single-sided ventilation (AM10): cells within 2.5 floor heights of an operable face. Flow combines wind (0.025 · A · U) and stack (BS 5925, ΔT '+(SW.vent.dT||3)+' K over the opening height).':'Stack ventilation through atria or sky gardens: cells within 12 m of an operable face; flow combines wind and a three-storey stack.'} Free opening area is ${Math.round(R.open*100)}% of the glass on operable zones; ASHRAE 62.1 asks for openings of at least 4% of the floor served, within 8 m of every point. The wind is the ${LAB.S.impact.wind.annual?'dominant sector of the period':'current case'} scaled to this height. Interior partitions are not modeled.`; }
-  host.innerHTML=planSVG(R,layer,extra); $('plan-legend').innerHTML=legend; $('plan-stats').innerHTML=stats; $('plan-note').textContent=note;
+  host.innerHTML=planSVG(R,layer,extra); $('plan-legend').innerHTML=legend; $('plan-stats').innerHTML=stats; $('plan-note').textContent=note; if(LAB.help) LAB.help.apply($('plan-block'));
 }
 
 /* ---------- tower-wide ventilation checks (ASHRAE 62.1 natural ventilation): free opening area and floor within 8 m of an operable opening, per floor ---------- */
