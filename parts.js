@@ -61,13 +61,13 @@ function groundIds(S){ if(!S.levels.length) return []; const z=S.levels[nearestL
 function rowHTML(k){ const S=state; const ids=k==='ground'?groundIds(S):S.by[k]; const n=ids.length; const found=k==='ground'||n>0;
   const s=k==='ground'?`ground at model z <input type="number" id="pt-ground" step="0.05" value="${S.groundZ}" aria-label="Ground floor level, model z"> m${S.levels.length?' · plate at '+S.levels[nearestLevel(S,S.groundZ)].toFixed(2)+' m':''}`:(S.sum[k]||'not found in the model');
   const vis=!S.hideCat[k]; const ck=S.confirmed[k];
-  return `<tr class="${found?'':'nf'}"><td><label class="eye" title="Show in the preview"><input type="checkbox" data-vis="${k}" ${vis?'checked':''} ${n?'':'disabled'}><span class="sw" style="background:${COL[k]}"></span></label></td><td><b>${NAME[k]}</b><br><span class="ps">${s}</span></td><td>${n?`<button type="button" class="btn small" data-show="${k}" aria-pressed="${S.show===k}" title="Highlight these parts and grey the rest">Isolate</button>`:''}</td><td>${k==='mass'||k==='other'?'':`<label class="check"><input type="checkbox" data-ok="${k}" ${found&&ck!==false?'checked':''} ${found?'':'disabled'}><span>${found?'Correct':'–'}</span></label>`}</td></tr>`; }
+  return `<tr class="${found?'':'nf'}${n?' pick':''}${S.show===k?' on':''}" ${n?`data-pick="${k}"`:''}><td><label class="eye" title="Show in the preview"><input type="checkbox" data-vis="${k}" ${vis?'checked':''} ${n?'':'disabled'}><span class="sw" style="background:${COL[k]}"></span></label></td><td><b>${NAME[k]}</b><br><span class="ps">${s}</span></td><td>${k==='mass'||k==='other'?'':`<label class="check"><input type="checkbox" data-ok="${k}" ${found&&ck!==false?'checked':''} ${found?'':'disabled'}><span>${found?'Correct':'–'}</span></label>`}</td></tr>`; }
 function layerRows(){ const S=state; return Object.keys(S.byLayer).sort().map(L=>{ const ids=S.byLayer[L]; const tally={}; for(const i of ids) tally[S.cat[i]]=(tally[S.cat[i]]||0)+1; const top=Object.entries(tally).sort((a,b)=>b[1]-a[1]); const dom=top.length?top[0][0]:'other'; const esc=LAB.viz?LAB.viz.esc(L):L; const q=L.replace(/"/g,'&quot;');
-  return `<tr><td><label class="eye"><input type="checkbox" data-lvis="${q}" ${S.hideLayer[L]?'':'checked'}><span class="sw" style="background:${COL[dom]}"></span></label></td><td>${esc}<br><span class="ps">${ids.length} piece${ids.length>1?'s':''} · ${top.map(([c,n])=>NAME[c]+(n>1?' ×'+n:'')).join(', ')}</span></td><td><select data-layer="${q}" aria-label="Role of layer ${esc}"><option value="auto"${(S.layerChoice[L]||'auto')==='auto'?' selected':''}>As scanned</option>${CATS.map(c=>`<option value="${c[0]}"${S.layerChoice[L]===c[0]?' selected':''}>${c[1]}</option>`).join('')}</select></td></tr>`; }).join(''); }
+  return `<tr class="pick${S.showLayer===L?' on':''}" data-lpick="${q}"><td><label class="eye"><input type="checkbox" data-lvis="${q}" ${S.hideLayer[L]?'':'checked'}><span class="sw" style="background:${COL[dom]}"></span></label></td><td>${esc}<br><span class="ps">${ids.length} piece${ids.length>1?'s':''} · ${top.map(([c,n])=>NAME[c]+(n>1?' ×'+n:'')).join(', ')}</span></td><td><select data-layer="${q}" aria-label="Role of layer ${esc}"><option value="auto"${(S.layerChoice[L]||'auto')==='auto'?' selected':''}>As scanned</option>${CATS.map(c=>`<option value="${c[0]}"${S.layerChoice[L]===c[0]?' selected':''}>${c[1]}</option>`).join('')}</select></td></tr>`; }).join(''); }
 function render(){ const S=state; const card=$('parts-dialog'); if(!card) return; const nL=Object.keys(S.byLayer).length;
   card.innerHTML=`<div class="pd-head"><h2>Check the model</h2><button type="button" class="btn small" id="pt-close" aria-label="Close">✕</button></div>
-  <p class="ps">The scan found these parts in <b>${S.name}</b>, drawn exploded in the viewport. Untick a part or a layer to hide it, Isolate one to grey the rest, and confirm each.</p>
-  <div class="pt-explode"><label for="pt-ex">Exploded view</label><input type="range" id="pt-ex" min="0" max="1" step="0.05" value="${S.explode}"><span>${Math.round(S.explode*100)}%</span><button type="button" class="btn small" id="pt-frame">Frame</button></div>
+  <p class="ps">The scan found these parts in <b>${S.name}</b>. Click a part or a layer to highlight it in the model, click it again to clear; untick to hide it, and confirm each part.</p>
+  <div class="pt-explode">${S.show||S.showLayer?`<span>Highlighted: <b>${S.show?NAME[S.show]:(LAB.viz?LAB.viz.esc(S.showLayer):S.showLayer)}</b></span><button type="button" class="btn small" id="pt-clear">Clear</button>`:'<span class="ps">Nothing highlighted</span>'}<button type="button" class="btn small" id="pt-frame">Frame</button></div>
   <h3>Parts</h3><table class="pt"><tbody>${ORDER.filter(k=>k!=='other'||S.by.other.length).map(rowHTML).join('')}</tbody></table>
   <h3>Layers <span class="ps">${nL} in the massing</span></h3><div class="pt-lbtn"><button type="button" class="btn small" id="pt-all">Show all</button><button type="button" class="btn small" id="pt-none">Hide all</button></div><table class="pt"><tbody>${layerRows()}</tbody></table>
   <div class="actions"><button type="button" class="btn primary" id="pt-apply">Use these parts</button><button type="button" class="btn" id="pt-skip">Keep the plain import</button></div>
@@ -75,8 +75,9 @@ function render(){ const S=state; const card=$('parts-dialog'); if(!card) return
   card.hidden=false;
   const q=sel=>card.querySelector(sel);
   q('#pt-close').onclick=close; q('#pt-skip').onclick=()=>{ close(); if(LAB.sim&&LAB.sim.afterImport) LAB.sim.afterImport(); }; q('#pt-apply').onclick=apply; q('#pt-frame').onclick=()=>{ if(LAB.sim&&LAB.sim.framePreview) LAB.sim.framePreview(); };
-  const ex=q('#pt-ex'); ex.oninput=()=>{ S.explode=+ex.value; ex.nextElementSibling.textContent=Math.round(S.explode*100)+'%'; highlight(); };
-  card.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{ S.show=S.show===b.dataset.show?null:b.dataset.show; highlight(); render(); });
+  const skip=e=>e.target.closest('input,select,button,label'); const cl=q('#pt-clear'); if(cl) cl.onclick=()=>{ S.show=null; S.showLayer=null; highlight(); render(); };
+  card.querySelectorAll('[data-pick]').forEach(r=>r.onclick=e=>{ if(skip(e)) return; const k=r.dataset.pick; S.showLayer=null; S.show=S.show===k?null:k; highlight(); render(); });
+  card.querySelectorAll('[data-lpick]').forEach(r=>r.onclick=e=>{ if(skip(e)) return; const L=r.dataset.lpick; S.show=null; S.showLayer=S.showLayer===L?null:L; highlight(); render(); });
   card.querySelectorAll('[data-ok]').forEach(c=>c.onchange=()=>{ S.confirmed[c.dataset.ok]=c.checked; });
   card.querySelectorAll('[data-vis]').forEach(c=>c.onchange=()=>{ S.hideCat[c.dataset.vis]=!c.checked; highlight(); });
   card.querySelectorAll('[data-lvis]').forEach(c=>c.onchange=()=>{ S.hideLayer[c.dataset.lvis]=!c.checked; highlight(); });
@@ -93,7 +94,7 @@ function offsets(S){ const e=S.explode, nL=Math.max(1,S.levels.length); const ga
     if(c==='structure') dx=-e*(S.ctx.dx*0.5+12); if(c==='stair'){ dx=e*(S.ctx.dx*0.5+12); }
     out.push({dx,dy,dz}); }); return out; }
 function highlight(){ const S=state; if(!S||!LAB.sim||!LAB.sim.showExploded) return; const off=offsets(S); const gIds=S.show==='ground'?new Set(groundIds(S)):null; const items=[];
-  S.pieces.forEach((p,i)=>{ const c=S.cat[i]; if(S.hideCat[c]||S.hideLayer[p.layerName||'model']) return; let col=COL[c], dim=false; if(S.show){ const on=S.show==='ground'?gIds.has(i):c===S.show; if(!on) dim=true; else if(S.show==='ground') col=COL.ground; } items.push({p,color:col,dim,off:off[i]}); });
+  S.pieces.forEach((p,i)=>{ const c=S.cat[i]; if(S.hideCat[c]||S.hideLayer[p.layerName||'model']) return; let col=(S.show||S.showLayer)?COL[c]:'#B7BEC6', dim=false; if(S.show){ const on=S.show==='ground'?gIds.has(i):c===S.show; if(!on) dim=true; else if(S.show==='ground') col=COL.ground; } else if(S.showLayer){ if((p.layerName||'model')!==S.showLayer) dim=true; } items.push({p,color:col,dim,off:off[i]}); });
   LAB.sim.showExploded(items); }
 function close(){ const c=$('parts-dialog'); if(c) c.hidden=true; if(state){ state.show=null; } if(LAB.sim&&LAB.sim.showExploded) LAB.sim.showExploded(null); }
 /* ---------- apply the confirmed parts ---------- */
@@ -113,7 +114,7 @@ function open(massing,name){ if(!massing||!massing.length) return; const pieces=
   let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9,z0=1e9,z1=-1e9; for(const I of inf){ x0=Math.min(x0,I.x0); x1=Math.max(x1,I.x1); y0=Math.min(y0,I.y0); y1=Math.max(y1,I.y1); z0=Math.min(z0,I.z0); z1=Math.max(z1,I.z1); }
   const U=LAB.upload; const foot=U&&U.footprint?U.footprint:(x1-x0)*(y1-y0)*0.6;
   const byLayer={}; pieces.forEach((p,i)=>{ const L=p.layerName||'model'; (byLayer[L]=byLayer[L]||[]).push(i); });
-  state={name:name||'the model',pieces,info:inf,all:massing,byLayer,layerChoice:{},confirmed:{},ctx:{top:z1,minz:z0,foot:Math.max(50,foot),cx:(x0+x1)/2,cy:(y0+y1)/2,dx:x1-x0,dy:y1-y0},groundZ:null,show:null,explode:0.6,hideCat:{},hideLayer:{}};
+  state={name:name||'the model',pieces,info:inf,all:massing,byLayer,layerChoice:{},confirmed:{},ctx:{top:z1,minz:z0,foot:Math.max(50,foot),cx:(x0+x1)/2,cy:(y0+y1)/2,dx:x1-x0,dy:y1-y0},groundZ:null,show:null,showLayer:null,explode:0,hideCat:{},hideLayer:{}};
   classify(); render(); highlight(); }
 function reopen(){ if(state){ render(); highlight(); return true; } return false; }
 LAB.parts={open,reopen,close,apply,CATS,get state(){return state;}};

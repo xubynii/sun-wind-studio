@@ -219,12 +219,12 @@ function showParts(pieces,color){ clearGroup(partsGroup); const R=LAB.uploadRaw,
   partsGroup.position.set(S.posX,-((U&&U.grade)||0),-S.posY); partsGroup.rotation.y=S.rotDeg*Math.PI/180; LAB.requestRender(); }
 /* exploded preview of the uploaded model during the parts review: the site, the studied massing and the overlays are hidden,
    every piece is drawn in its part colour at its exploded offset; closing the review restores the view */
-let preview=null; const PREV_MAT={}; const DIM_MAT=new THREE.MeshLambertMaterial({color:new THREE.Color('#C9CED4'),transparent:true,opacity:0.18,depthWrite:false});
+let preview=null; const PREV_MAT={}; const DIM_MAT=new THREE.MeshLambertMaterial({color:new THREE.Color('#C9CED4'),transparent:true,opacity:0.3,depthWrite:false});
 function partMat(c){ if(!PREV_MAT[c]){ PREV_MAT[c]=new THREE.MeshLambertMaterial({color:new THREE.Color(c),side:THREE.DoubleSide}); } return PREV_MAT[c]; }
 function showExploded(items){ clearGroup(partsGroup); const R=LAB.uploadRaw, U=LAB.upload, S=LAB.S;
   if(!items){ if(preview){ for(const [o,v] of preview.vis) o.visible=v; preview=null; syncGeometry(); } partsGroup.visible=false; LAB.requestRender(); return; }
   if(!R) return; const first=!preview;
-  if(first){ preview={vis:[]}; for(const o of [LAB.siteGroup,lodGroup,dressGroup,advGroup,belowGroup,LAB.towerGroup,LAB.overlayGroup,LAB.waterGroup]){ if(o){ preview.vis.push([o,o.visible]); o.visible=false; } } }
+  if(first){ preview={vis:[]}; for(const o of [lodGroup,dressGroup,advGroup,belowGroup,LAB.towerGroup,LAB.overlayGroup,LAB.waterGroup]){ if(o){ preview.vis.push([o,o.visible]); o.visible=false; } } }
   partsGroup.visible=true;
   const byMat=new Map(); for(const it of items){ const key=it.dim?'dim':it.color; let arr=byMat.get(key); if(!arr){ arr=[]; byMat.set(key,arr); } arr.push(it); }
   for(const [key,list] of byMat){ let n=0; for(const it of list) n+=it.p.f.length; const pos=new Float32Array(n*3); let w=0;
