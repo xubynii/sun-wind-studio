@@ -269,10 +269,11 @@ const NORMAL_VS='varying vec3 vN; varying float vZ; void main(){ vN=normalize(ma
 const NORMAL_FS='uniform float uCat; varying vec3 vN; varying float vZ; void main(){ vec3 n=gl_FrontFacing?vN:-vN; float az=atan(n.x,-n.z)/6.2831853+0.5; gl_FragColor=vec4(az,n.y*0.5+0.5,clamp(vZ/'+ZMAX.toFixed(1)+',0.0,1.0),uCat); }';
 const normalMat=c=>new THREE.ShaderMaterial({uniforms:{uCat:{value:c}},vertexShader:NORMAL_VS,fragmentShader:NORMAL_FS,side:THREE.DoubleSide});
 /* one representative day: per-cell new-shadow hours (clear sky), façade sunlight, and an hourly record of lit area per category and per floor */
-function sunDay(doy,tz,h0,h1,ctx){
+function sunDay(doy,tz,h0,h1,ctx,positions){
   const R=LAB.renderer, N=sunRes.w*sunRes.h; const withT=new Float32Array(N), without=new Float32Array(N); let lostWh=0, towerWh=0, hours=0; const towerBy={}; for(const c of CATS) towerBy[c]=0;
   const {gWhite,white,black,setTower,towerMeshes,siteMeshes,normalMats,zIndex,nF}=ctx; const pxArea=(920/512)*(920/512); const hourly=[];
-  for(let h=h0;h<=h1;h++){ const p=sunPos(doy,h,tz); if(p.alt<0.03) continue; hours++;
+  const poss=positions||[]; if(!positions) for(let h=h0;h<=h1;h++) poss.push({h,p:sunPos(doy,h,tz)});
+  for(const {h,p} of poss){ if(p.alt<0.03) continue; hours++;
     setSunLight(p); const I=dni(p.alt);
     LAB.scene.overrideMaterial=gWhite; gWhite.needsUpdate=true; LAB.ground.material=gWhite; R.shadowMap.enabled=true;
     for(const cfg of [1,0]){ setTower(!!cfg); R.setRenderTarget(rtTop); R.clear(); R.render(LAB.scene,topCam); const buf=readRT(rtTop); const thr=Math.max(20,Math.sin(p.alt)*255*0.45);
@@ -365,6 +366,28 @@ function runSunStudy(){
 function drawSunOverlay(){
   if(!sunResult) return; const c1=hex('#F2C46B'), c2=hex('#7A2E8E'); const maxV=sunResult.scope==='period'?Math.max(4,800*sunResult.period.days/365):Math.max(2,sunResult.hours*0.8), lo=sunResult.th[0]*0.5;
   setOverlay((ix,iy)=>{ const v=sunResult.newSh[iy*DOM.nx+ix]; if(v<lo) return null; const t=Math.min(1,v/maxV); const c=lerpC(c1,c2,t); return [c[0],c[1],c[2],Math.round(110+120*t)]; }); updateLegend();
+}
+
+/* one directional exposure pass from a vector (used for wind-driven rain): ground newly sheltered by the tower, and the façade area the vector reaches per orientation and floor */
+function exposurePass(alt,azDeg){
+  const R=LAB.renderer; const floors=LAB.floors; if(!floors) return null;
+  if(!rtTop){ rtTop=new THREE.WebGLRenderTarget(sunRes.w,sunRes.h,{depthBuffer:true}); topCam=new THREE.OrthographicCamera(-(DOM.xmax-DOM.xmin)/2,(DOM.xmax-DOM.xmin)/2,(DOM.ymax-DOM.ymin)/2,-(DOM.ymax-DOM.ymin)/2,1,3000);
+    rtSun=new THREE.WebGLRenderTarget(512,512,{depthBuffer:true}); sunCam=new THREE.OrthographicCamera(-460,460,460,-460,1,4000); }
+  topCam.position.set((DOM.xmin+DOM.xmax)/2,1500,-(DOM.ymin+DOM.ymax)/2); topCam.up.set(0,0,-1); topCam.lookAt((DOM.xmin+DOM.xmax)/2,0,-(DOM.ymin+DOM.ymax)/2); topCam.updateProjectionMatrix();
+  const nF=floors.length; const zIndex=new Int16Array(256).fill(-1); for(let b=0;b<256;b++){ const z=b/255*ZMAX; for(let i=0;i<nF;i++){ if(z<floors[i].z+floors[i].h){ zIndex[b]=i; break; } } }
+  const groups=towerGroups(); const groupVis=groups.map(g=>g.visible); const setTower=v=>{ for(const g of groups) g.visible=v; };
+  const ctx={white:new THREE.MeshBasicMaterial({color:0xffffff}),black:new THREE.MeshBasicMaterial({color:0x000000}),gWhite:new THREE.MeshLambertMaterial({color:0xffffff}),setTower,towerMeshes:[],siteMeshes:[],normalMats:{tower:normalMat(1.0),shade:normalMat(0.78),pv:normalMat(0.59)},zIndex,nF};
+  const hiddenViz=[]; for(const g of groups){ g.visible=true; g.traverse(o=>{ if(!o.isMesh) return; if(o.userData.viz){ if(o.visible){ o.visible=false; hiddenViz.push(o); } return; } if(o.visible) ctx.towerMeshes.push(o); }); }
+  LAB.siteGroup.traverse(o=>{ if(o.isMesh&&o.userData.site&&o.castShadow) ctx.siteMeshes.push(o); });
+  const prevClear=new THREE.Color(); R.getClearColor(prevClear); const prevAlpha=R.getClearAlpha();
+  const prev={shadow:R.shadowMap.enabled,cast:LAB.sun.castShadow,hemi:LAB.hemi.intensity,sunI:LAB.sun.intensity,bg:LAB.scene.background,ground:LAB.ground.material,ov:overlayMesh?overlayMesh.visible:false};
+  R.shadowMap.enabled=true; LAB.sun.castShadow=true; LAB.hemi.intensity=0; LAB.sun.intensity=1; LAB.scene.background=null; R.setClearColor(0x000000,0); if(overlayMesh) overlayMesh.visible=false;
+  const hiddenObjs=[]; LAB.scene.traverse(o=>{ if((o.isLine||o.isPoints||o.isSprite)&&o.visible){ o.visible=false; hiddenObjs.push(o); } });
+  let out=null, err=null;
+  try{ const r=sunDay(0,0,0,0,ctx,[{h:0,p:{alt,az:azDeg*Math.PI/180}}]); const H=r.hourly[0]||null; out={shade:r.v,A:H?H.A:null,Az:H?H.Az:null,nF,lostA:r.lostWh,pxArea:(920/512)*(920/512)}; }catch(e){ err=e; }
+  R.setRenderTarget(null); LAB.scene.overrideMaterial=null; R.shadowMap.enabled=prev.shadow; LAB.sun.castShadow=prev.cast; LAB.hemi.intensity=prev.hemi; LAB.sun.intensity=prev.sunI; LAB.scene.background=prev.bg; LAB.ground.material=prev.ground; R.setClearColor(prevClear,prevAlpha);
+  groups.forEach((g,i)=>{ g.visible=groupVis[i]; }); for(const o of hiddenViz) o.visible=true; if(overlayMesh) overlayMesh.visible=prev.ov; for(const o of hiddenObjs) o.visible=true; shadowState=null; applySunView();
+  if(err) throw err; return out;
 }
 
 /* ---------- Advanced solar analytics by façade zone, from the hourly per-floor record without a rerun ---------- */
@@ -548,8 +571,14 @@ function syncPeriodUI(){
   const sun=CLIMATE.sunshine.reduce((s,v,i)=>s+v*PI.monthDays[i]/CLIMATE.days[i],0);
   $('period-note').textContent=`${PI.full?'Whole year':PI.label} · ${PI.days} day${PI.days>1?'s':''} · about ${fmtI(sun)} sunshine hours, wind mostly from ${top}. Period studies, PV and ventilation use this range.`;
 }
-let stale={sun:false,wind:false}, busy=false;
-function showStale(){ if(busy) return; $('run-sun').textContent=stale.sun?'Run study (settings changed)':'Run study'; $('run-wind').textContent=stale.wind?'Run study (settings changed)':'Run study'; }
+let stale={sun:false,wind:false,rain:false}, busy=false;
+function showStale(){ if(busy) return; $('run-sun').textContent=stale.sun?'Run study (settings changed)':'Run study'; $('run-wind').textContent=stale.wind?'Run study (settings changed)':'Run study'; $('run-rain').textContent=stale.rain?'Run study (settings changed)':'Run study'; }
+function renderRain(){ try{ setOut('rain',LAB.rain?LAB.rain.html():''); }catch(e){ console.error(e); } }
+/* an uploaded mass entering Design development: ask whether to slice it into floors, or keep the plates found in the file */
+function maybeSliceDialog(){ const U=LAB.upload; const dlg=$('slice-dialog'); if(!adv()||!U||LAB.S.typology!=='upload'){ dlg.hidden=true; return; } SW.sliceOK=SW.sliceOK||{}; const key=String(LAB.uploadRaw?LAB.uploadRaw.version:0); if(SW.sliceOK[key]){ dlg.hidden=true; return; }
+  $('slice-f2f').value=LAB.S.f2f; $('slice-text').textContent=U.levels?`The file holds ${U.plates} floor plates at a typical ${U.typical.toFixed(1)} m storey. Design development studies work floor by floor: use those plates, or slice the mass evenly instead.`:`Your upload is a solid mass with no floor plates. Design development studies the interior floor by floor, so the mass has to be sliced: ${Math.floor(U.top/LAB.S.f2f)} floors at ${LAB.S.f2f} m, or set another floor-to-floor height.`;
+  $('slice-keep').hidden=!U.levels; dlg.hidden=false; LAB.tabs.show('model'); }
+function sliceDecision(useLevels){ const U=LAB.upload; if(!U) return; SW.sliceOK=SW.sliceOK||{}; SW.sliceOK[String(LAB.uploadRaw?LAB.uploadRaw.version:0)]=true; const f=parseFloat($('slice-f2f').value); if(!useLevels&&f>=2.4&&f<=9){ LAB.S.f2f=f; } U.useLevels=!!useLevels&&!!U.levels; $('slice-dialog').hidden=true; persist(); LAB.update(); updateGeomInfo(); }
 const live=()=>{ persist(); syncGeometry(); if(adv()){ if(sunResult) stale.sun=true; if(windResult) stale.wind=true; showStale(); } rerender(); };
 function buildZoneUI(){
   LAB.controlsFor($('zone-editor'),ZONE_P,'zn',()=>SW.zones[zoneSel],(k)=>{ const z=SW.zones[zoneSel]; if(!z) return;
@@ -587,11 +616,16 @@ function buildUI(){
   $('run-all').addEventListener('click',()=>runAll());
   $('run-daylight').addEventListener('click',()=>{ setMode('sun'); if(!busy) runStudy('sun'); });
   $('run-vent').addEventListener('click',()=>{ setMode('wind'); if(!busy) runStudy('wind'); });
-  $('run-active').addEventListener('click',()=>{ if(busy) return; const m=LAB.S.impact.mode==='wind'?'wind':'sun'; setMode(m); runStudy(m); });
+  $('run-active').addEventListener('click',()=>{ if(busy) return; const m=LAB.S.impact.mode==='wind'?'wind':(LAB.S.impact.mode==='rain'?'rain':'sun'); setMode(m); runStudy(m); });
   buildReportUI();
   const presets=$('wind-presets'); CLIMATE.winds.forEach(w=>{ const b=document.createElement('button'); b.type='button'; b.className='chip'; b.textContent=w.label; b.addEventListener('click',()=>{ LAB.S.impact.wind.dir=w.dir; LAB.S.impact.wind.speed=w.speed; LAB.S.impact.wind.annual=false; syncUI(); setMode('wind'); runCurrent(true); }); presets.appendChild(b); });
   $('view-sun').addEventListener('click',()=>{ const on=LAB.S.impact.mode!=='sun'; setMode(on?'sun':'none'); if(on) LAB.tabs.show('sun'); });
   $('view-wind').addEventListener('click',()=>{ const on=LAB.S.impact.mode!=='wind'; setMode(on?'wind':'none'); if(on) LAB.tabs.show('wind'); });
+  $('view-rain').addEventListener('click',()=>{ const on=LAB.S.impact.mode!=='rain'; setMode(on?'rain':'none'); if(on) LAB.tabs.show('rain'); });
+  $('run-rain').addEventListener('click',()=>{ setMode('rain'); if(!busy) runStudy('rain'); });
+  $('slice-apply').addEventListener('click',()=>sliceDecision(false)); $('slice-keep').addEventListener('click',()=>sliceDecision(true));
+  $('reslice').addEventListener('click',()=>{ SW.sliceOK=SW.sliceOK||{}; delete SW.sliceOK[String(LAB.uploadRaw?LAB.uploadRaw.version:0)]; maybeSliceDialog(); if(!adv()) LAB.toast&&LAB.toast('Slicing options open in Design development.'); });
+  if(LAB.rain) LAB.rain.buildUI();
   // true views: the core's handlers run first and set the orbit; these refine them
   $('view-top').addEventListener('click',()=>setViewMode(true,false,0,0));
   $('view-elev').addEventListener('click',()=>setViewMode(true,false,view.ortho&&!view.section&&LAB.orbit.phi>1.5?LAB.orbit.theta+Math.PI/2:0,Math.PI/2));
@@ -608,18 +642,18 @@ function buildUI(){
   syncUI();
 }
 function syncVentUI(){ const host=$('params-vent'); LAB.syncFor(host,VENT_P,'vt',SW.vent); const ad=SW.vent.band==='adaptive'; for(const k of ['tmin','tmax']){ const el=host.querySelector(`[data-param="${k}"]`); if(el) el.style.opacity=ad?'.4':'1'; } const dt=host.querySelector('[data-param="dT"]'); if(dt) dt.hidden=SW.vent.mode==='cross'; }
-function setStudioMode(m){ if(SW.mode===m) return; SW.mode=m; persist(); document.body.dataset.mode=m; syncGeometry(); placeControls(); { const t=document.querySelector('#tabs button[aria-selected="true"]'); const cur=t?t.dataset.tab:'model'; if(m==='basic'&&['strat','daylight','vent','energy'].includes(cur)) LAB.tabs.show(cur==='vent'?'wind':(cur==='energy'?'eff':'sun')); else if(m==='advanced'&&(cur==='sun'||cur==='wind'||cur==='eff')) LAB.tabs.show(cur==='wind'?'vent':(cur==='eff'?'energy':'strat')); }
+function setStudioMode(m){ if(SW.mode===m) return; SW.mode=m; persist(); document.body.dataset.mode=m; syncGeometry(); placeControls(); setTimeout(maybeSliceDialog,0); { const t=document.querySelector('#tabs button[aria-selected="true"]'); const cur=t?t.dataset.tab:'model'; if(m==='basic'&&['strat','daylight','vent','energy'].includes(cur)) LAB.tabs.show(cur==='vent'?'wind':(cur==='energy'?'eff':'sun')); else if(m==='advanced'&&(cur==='sun'||cur==='wind'||cur==='eff')) LAB.tabs.show(cur==='wind'?'vent':(cur==='eff'?'energy':'strat')); }
   if(sunResult){ stale.sun=true; } if(windResult&&(!!windResult.strat)!==stratActive()){ stale.wind=true; } showStale(); syncUI(); updateGeomInfo(); rerender(); }
-function setMode(m){ if(LAB.S.impact.mode===m) return; LAB.S.impact.mode=m; syncUI(); clearOverlay(); applySunView(); if(!busy) runCurrent(false); persist(); }
+function setMode(m){ if(LAB.S.impact.mode===m) return; const wasRain=LAB.S.impact.mode==='rain'; LAB.S.impact.mode=m; syncUI(); clearOverlay(); applySunView(); if((m==='rain')!==wasRain){ LAB.S.water.on=(m==='rain'); LAB.update(); } if(!busy) runCurrent(false); persist(); }
 function onTab(name){ if(['strat','daylight','vent','energy'].includes(name)&&!adv()){ LAB.tabs.show(name==='energy'?'eff':'sun'); return; } if((name==='sun'||name==='wind'||name==='eff')&&adv()){ LAB.tabs.show(name==='sun'?'daylight':(name==='wind'?'vent':'energy')); return; }
-  const was=curTab; curTab=name; $('period-block').hidden=!['sun','wind','strat','daylight','vent','report'].includes(name); if(name==='sun'||name==='daylight') setMode('sun'); if(name==='wind'||name==='vent') setMode('wind'); if(name==='strat'&&LAB.S.impact.mode==='none') setMode('sun'); if(name==='report') syncReportUI(); if(!adv()&&(name==='eff'||was==='eff')) rerender(); }
+  const was=curTab; curTab=name; $('period-block').hidden=!['sun','wind','strat','daylight','vent','report','rain'].includes(name); if(name==='sun'||name==='daylight') setMode('sun'); if(name==='wind'||name==='vent') setMode('wind'); if(name==='rain') setMode('rain'); if(name==='strat'&&LAB.S.impact.mode==='none') setMode('sun'); if(name==='report') syncReportUI(); if(!adv()&&(name==='eff'||was==='eff')) rerender(); }
 function syncUI(){
   for(const m of ['sun','wind']) LAB.syncFor($('params-'+m),MODE_P[m],'im'+m,LAB.S.impact[m]);
   const sd=LAB.S.impact.sun; const dateCtl=document.querySelector('#params-sun [data-param="date"]'); if(dateCtl) dateCtl.querySelector('label').textContent=sd.scope==='date'?'Date':'Date shown in the viewport';
   const W=LAB.S.impact.wind; document.querySelectorAll('#params-wind [data-param="dir"], #params-wind [data-param="speed"]').forEach(el=>{ el.style.opacity=W.annual?'.45':'1'; });
   const vs=document.querySelector('#params-wind [data-param="view"] option[value="strat"]'); if(vs) vs.hidden=!adv();
   const m=LAB.S.impact.mode;
-  $('view-sun').setAttribute('aria-pressed',String(m==='sun')); $('view-wind').setAttribute('aria-pressed',String(m==='wind')); updateLegend();
+  $('view-sun').setAttribute('aria-pressed',String(m==='sun')); $('view-wind').setAttribute('aria-pressed',String(m==='wind')); $('view-rain').setAttribute('aria-pressed',String(m==='rain')); updateLegend();
   document.querySelectorAll('#mode-switch button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.mode===SW.mode)));
   document.body.dataset.mode=SW.mode;
   LAB.syncFor($('params-glazing'),GLAZE_P,'gl',SW.glaz); LAB.syncFor($('params-pv'),PV_P,'pv',SW.pv); syncVentUI(); LAB.syncFor($('params-dl'),DL_P,'dl',SW.dl); LAB.syncFor($('params-ws'),WS_P,'ws',SW.ws); syncZoneUI(); syncViewButtons();
@@ -630,16 +664,18 @@ function syncUI(){
 function updateGeomInfo(){ const R=LAB.uploadRaw; const el=$('geom-info');
   if(!R){ el.innerHTML='<p class="empty">No uploaded model. The generated massing is drawn as blocks in Basic and as floors with the zoned façade in Advanced.</p>'; $('c-raw').closest('label').style.opacity='.45'; return; }
   $('c-raw').closest('label').style.opacity='1';
-  el.innerHTML=`<p class="blurb" style="margin-top:0"><b>${R.name}</b>: ${R.massing.length} massing object${R.massing.length>1?'s':''}, ${R.shading.length} shading, ${R.pv.length} PV${R.pv.length?' ('+fmtI(meshArea(R.pv))+' m²)':''}. ${useRaw()?(adv()?'Shown and studied as modeled with every layer, so fins, overhangs, balconies and voids in the file shade the façades; zone devices are added on top.':'Shown and studied as the massing layer alone; switch to Advanced to bring in the shading and PV layers.'):'Shown and studied as the sliced massing; turn the modeled geometry on to use the file itself.'}</p>`;
+  el.innerHTML=`<p class="blurb" style="margin-top:0"><b>${R.name}</b>: ${R.massing.length} massing object${R.massing.length>1?'s':''}, ${R.shading.length} shading, ${R.pv.length} PV${R.pv.length?' ('+fmtI(meshArea(R.pv))+' m²)':''}. ${useRaw()?(adv()?'Shown and studied as modeled with every layer, so fins, overhangs, balconies and voids in the file shade the façades; zone devices are added on top.':'Shown and studied as the massing layer alone; switch to Design development to bring in the shading and PV layers.'):'Shown and studied as the sliced massing; turn the modeled geometry on to use the file itself.'}</p><p class="blurb"><b>Floors:</b> ${LAB.uploadSummary?LAB.uploadSummary():''} · ${LAB.floors?LAB.floors.length:0} floors in the study.</p>`;
+  $('reslice').hidden=!adv();
 }
 /* one study as a promise: the sun render (plus daylight and ASE in Advanced) or the wind flow (plus ventilation in Advanced) */
-function progressTo(kind,msg){ $('run-'+kind).textContent=msg; $('run-all-status').textContent=msg; $(kind==='sun'?'run-daylight-status':'run-vent-status').textContent=msg; $('run-active').textContent=msg; $('run-active').disabled=true; }
+function progressTo(kind,msg){ $('run-'+kind).textContent=msg; $('run-all-status').textContent=msg; $(kind==='sun'?'run-daylight-status':kind==='wind'?'run-vent-status':'run-rain-status').textContent=msg; $('run-active').textContent=msg; $('run-active').disabled=true; }
 function runStudy(kind){
   return new Promise(resolve=>{ busy=true; progressTo(kind,'Computing…'); setTimeout(async()=>{
     try{ if(kind==='sun'){ runSunStudy(); if(adv()&&sunResult){ progressTo('sun','Daylight factors…'); await new Promise(r=>setTimeout(r,20)); sunResult.daylight=daylightTower(); sunResult.ase=await aseTower(msg=>progressTo('sun',msg)); sunResult.advanced=true; } if(sunResult) sunResult.at=Date.now(); }
+      else if(kind==='rain'){ await LAB.rain.run(msg=>progressTo('rain',msg)); }
       else { await runWindStudy(msg=>progressTo('wind',msg)); if(adv()&&windResult){ progressTo('wind','Natural ventilation…'); windResult.vent=ventStudy(); windResult.vt=ventTowerQuick(); windResult.terr=terraceWind(); windResult.advanced=true; } if(windResult) windResult.at=Date.now(); }
-    }catch(e){ console.error(e); LAB.toast&&LAB.toast((kind==='sun'?'Sun':'Wind')+' study failed: '+e.message,true); }
-    busy=false; stale[kind]=false; showStale(); $('run-all-status').textContent=''; $('run-daylight-status').textContent=''; $('run-vent-status').textContent=''; updateLegend(); if(kind==='sun') renderSun(sunResult); else renderWind(windResult); resolve(); },30); });
+    }catch(e){ console.error(e); LAB.toast&&LAB.toast((kind==='sun'?'Sun':kind==='rain'?'Rain':'Wind')+' study failed: '+e.message,true); }
+    busy=false; stale[kind]=false; showStale(); $('run-all-status').textContent=''; $('run-daylight-status').textContent=''; $('run-vent-status').textContent=''; $('run-rain-status').textContent=''; updateLegend(); if(kind==='sun') renderSun(sunResult); else if(kind==='rain') renderRain(); else renderWind(windResult); resolve(); },30); });
 }
 function runCurrent(force){
   const m=LAB.S.impact.mode, floors=LAB.floors; if(!floors) return;
@@ -647,17 +683,18 @@ function runCurrent(force){
   if(busy) return;
   if(m==='sun'){ if(force) runStudy('sun'); else { drawSunOverlay(); renderSun(sunResult); } }
   else if(m==='wind'){ if(force) runStudy('wind'); else { drawWindOverlay(); renderWind(windResult); } }
+  else if(m==='rain'){ if(force) runStudy('rain'); else { if(LAB.rain) LAB.rain.drawOverlay(); renderRain(); } }
 }
 /* Advanced step 3: both studies in one go, then the live report */
 async function runAll(){ if(busy||!LAB.floors) return; const b=$('run-all'); b.disabled=true; try{ setMode('sun'); await runStudy('sun'); LAB.S.impact.mode='wind'; syncUI(); await runStudy('wind'); LAB.S.impact.mode='sun'; syncUI(); clearOverlay(); drawSunOverlay(); applySunView(); } finally{ b.disabled=false; rerender(); } }
-const sections={sun:'',wind:''}; let curTab='model';
+const sections={sun:'',wind:'',rain:''}; let curTab='model';
 /* glazing of a floor face for the energy model: the façade zone's window-to-wall ratio and SHGC, with the device transmission measured by the last sun run */
 let tMap=null;
 function zoneGlazing(fl,o){ const z=zoneFor(o,fl.i+1); if(!tMap){ tMap={}; if(sunResult&&sunResult.dayData){ try{ const A=solarStudy(sunResult); for(const Z of A.zones) tMap[Z.i]=Z.tAvg; }catch(e){} } } const idx=SW.zones.indexOf(z); const t=idx>=0&&tMap[idx]!=null?tMap[idx]:(STRATS[z.strat].mod||1); return {wwr:z.wwr,shgc:z.shgc,t,strat:z.strat}; }
 function energyChanged(){ persist(); rerender(); }
 function energySection(){ if(!LAB.energy||!LAB.floors) return ''; try{ return adv()?LAB.energy.energyHTML():LAB.energy.formHTML(); }catch(e){ console.error(e); return ''; } }
 function setOut(kind,html){ sections[kind]=html; const out=$('impact-out'); const pb=document.getElementById('plan-block'); tMap=null;
-  if(adv()){ out.hidden=false; const en=energySection(); out.innerHTML=reportHead()+'<div id="plan-slot"></div>'+sections.sun+sections.wind+en; const slot=document.getElementById('plan-slot'); if(slot&&pb) slot.appendChild(pb); }
+  if(adv()){ out.hidden=false; const en=energySection(); out.innerHTML=reportHead()+'<div id="plan-slot"></div>'+sections.sun+sections.wind+sections.rain+en; const slot=document.getElementById('plan-slot'); if(slot&&pb) slot.appendChild(pb); }
   else { out.hidden=false; out.innerHTML=curTab==='eff'?energySection():html; const home=document.getElementById('plan-home'); if(pb&&home&&pb.parentNode!==home) home.appendChild(pb); } }
 function fmtTime(t){ if(!t) return 'not yet run'; const d=new Date(t); return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}); }
 function reportHead(){
@@ -673,7 +710,7 @@ function reportHead(){
     <div class="rh-runs"><span>Sun ${r?'run '+fmtTime(r.at):'not yet run'}${r&&!r.advanced?' (Basic)':''}</span><span>Wind ${w?'run '+fmtTime(w.at):'not yet run'}${w&&!w.advanced?' (Basic)':''}</span>${anyStale?'<span class="rh-stale">Design changed since the last run · run the study again to refresh</span>':''}${!r&&!w?'<span>Design the façade, then run sun and daylight, and wind and ventilation.</span>':''}</div>
     ${kp?`<div class="kpi rh-kpi">${kp}</div>`:''}${leedCard(r,w)}</div>`;
 }
-function rerender(){ const m=LAB.S.impact.mode; if(adv()){ renderSun(sunResult); renderWind(windResult); analyseStatus(); } else { if(m==='sun') renderSun(sunResult); else if(m==='wind') renderWind(windResult); } try{ renderPlan(); }catch(e){ console.error(e); } }
+function rerender(){ const m=LAB.S.impact.mode; if(adv()){ renderSun(sunResult); renderWind(windResult); renderRain(); analyseStatus(); } else { if(m==='sun') renderSun(sunResult); else if(m==='wind') renderWind(windResult); else if(m==='rain') renderRain(); } try{ renderPlan(); }catch(e){ console.error(e); } }
 /* the Analyse tab's step strip */
 function analyseStatus(){ const el=$('analyse-status'); if(!el) return; const S=LAB.S; const floors=LAB.floors||[]; const massing=S.typology==='upload'&&LAB.uploadRaw?LAB.uploadRaw.name:LAB.TYP[S.typology].name+' (generated)'; const ops=SW.zones.filter(z=>z.operable).length; const devs=SW.zones.filter(z=>STRATS[z.strat].device||STRATS[z.strat].mod).length;
   el.innerHTML=`<li class="done"><b>Massing</b><span>${massing} · ${S.height} m · ${floors.length} floors</span></li><li class="${SW.zones.length?'done':''}"><b>Design</b><span>${SW.zones.length} façade zone${SW.zones.length===1?'':'s'} · ${devs} with shading · ${ops} operable${stratActive()?' · ground wind strategies set':''}</span></li><li class="${sunResult&&windResult&&!stale.sun&&!stale.wind?'done':(sunResult||windResult?'part':'')}"><b>Analyse</b><span>sun ${sunResult?fmtTime(sunResult.at):'not run'} · wind ${windResult?fmtTime(windResult.at):'not run'}${(stale.sun||stale.wind)?' · design changed, run again':''}</span></li>`; }
@@ -768,6 +805,7 @@ function renderWind(r){
 /* ---------- report data for the PDF builder ---------- */
 function reportData(kind){
   if(kind==='custom') return customReportData();
+  if(kind==='rain') return LAB.rain?LAB.rain.reportData():null;
   const S=LAB.S, fmt=fmtI; const modeName=adv()?'Design development':'Massing';
   if(kind==='sun'){ const r=sunResult, sd=S.impact.sun, D=DATES[sd.date]; if(!r) return null; const yr=r.scope==='period'; const P=r.period, unit=yr&&P.full?'h per year':'h in the period'; const H=r.heat;
     const out={title:'Sun and shadow study'+(yr?' · '+(P.full?'whole year':P.label):''),settings:[['Mode',modeName],['Scope',yr?`${P.full?'Whole year':P.label} (${P.days} days): ${r.months.length} representative days, hourly, weighted by days represented and bright-sunshine fraction`:D.label+', clear sky'],['Study window',`${sd.h0}:00 to ${sd.h1}:00, hourly`],['Geometry',r.raw?'uploaded model as modeled':S.typology==='upload'?'uploaded massing sliced into floors':LAB.TYP[S.typology].name],['Ground resolution','2 m'],['Facade sampling','512 × 512 from the sun, 1.8 m pixels, height per pixel']],
@@ -962,7 +1000,8 @@ function updateLegend(){
   runBtn.textContent=m==='wind'?(adv()?'Run wind & ventilation':'Run wind'):(adv()?'Run sun & daylight':'Run sun'); runBtn.disabled=busy;
   if(m==='sun'){ const r=sunResult; const yr=r&&r.scope==='period'; const hi=r?(yr?fmtI(Math.max(4,800*r.period.days/365)):Math.round(r.hours*0.8)):'8'; const lo=r?r.th[0]:1; el.className='ramp'; el.innerHTML=`<div class="bar" style="background:linear-gradient(90deg,#F2C46B,#7A2E8E)"></div><div class="lbls"><span>${lo} h of new shadow${yr?(r.period.full?' / yr':' in period'):''}</span><span>${r?'':'run to see the map · '}${hi}+ h</span></div>`; }
   else if(m==='wind'){ const v=LAB.S.impact.wind.view||'comfort'; if(v==='comfort'){ el.className='ramp bands'; el.innerHTML=`<div class="bar">${BAND_COL.map(c=>`<i style="background:${c}"></i>`).join('')}</div><div class="lbls"><span>sitting ≤ 2.5</span><span>standing</span><span>strolling</span><span>walking</span><span>uncomfortable > 8 m/s</span></div>`; } else { el.className='ramp'; el.innerHTML=`<div class="bar" style="background:linear-gradient(90deg,#3E8E7E,var(--line2) 50%,#B8362B)"></div><div class="lbls"><span>calmer ${v==='strat'?'with the strategies':'with the tower'}</span><span>windier</span></div>`; } }
-  else { el.className='ramp'; el.innerHTML=`<div class="bar"></div><div class="lbls"><span>No overlay · choose Sun or Wind</span><span></span></div>`; }
+  else if(m==='rain'){ runBtn.textContent='Run rain'; el.className='ramp'; el.innerHTML=`<div class="bar" style="background:linear-gradient(90deg,#CFE3F2,#2F6FA8)"></div><div class="lbls"><span>ground kept dry by the building in a driving-rain storm</span><span>${LAB.rain&&LAB.rain.result?'sheltered':'run to see the rain shadow'}</span></div>`; }
+  else { el.className='ramp'; el.innerHTML=`<div class="bar"></div><div class="lbls"><span>No overlay · choose Sun, Wind or Rain</span><span></span></div>`; }
 }
 /* ---------- LEED v4.1 scorecard (Design development) ---------- */
 function leedCard(r,w){
@@ -978,7 +1017,7 @@ function leedCard(r,w){
   return `<h3 style="margin-top:12px">Scorecard · LEED v4.1 and Vancouver targets, indicative</h3><div class="tbl-wrap"><table class="score"><thead><tr><th>Credit</th><th>Metric</th><th>Result</th><th>Threshold</th><th>Status</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${x[0]}</td><td class="why">${x[1]}</td><td class="num">${x[2]}</td><td class="why">${x[3]}</td><td>${x[4]}</td></tr>`).join('')}</tbody></table></div><p class="note">Proxies for early design: sDA from a daylight-factor model, ASE from a sun sweep without blinds, ventilation from the façade zones' operable share. LEED documentation needs an hourly Radiance run and the 62.1 natural ventilation procedure.</p>`;
 }
 /* ---------- report builder ---------- */
-const REP_SECTIONS=[['summary','Summary and settings',true],['shadow','Shadow on the ground and plazas',true],['facade','Sun on the façades and solar heat',true],['efficiency','Massing efficiency · form metrics',true],['daylight','Daylight · sDA and ASE (Design development)',true],['wind','Pedestrian wind comfort',true],['vent','Natural ventilation and terraces (Design development)',true],['energy','Energy model · TEUI, TEDI, GHGI (Design development)',true],['plans','Floor plans (Design development)',true],['method','Method and assumptions',true]];
+const REP_SECTIONS=[['summary','Summary and settings',true],['shadow','Shadow on the ground and plazas',true],['facade','Sun on the façades and solar heat',true],['efficiency','Massing efficiency · form metrics',true],['daylight','Daylight · sDA and ASE (Design development)',true],['wind','Pedestrian wind comfort',true],['rain','Rain · driving rain, shelter and harvesting',true],['vent','Natural ventilation and terraces (Design development)',true],['energy','Energy model · TEUI, TEDI, GHGI (Design development)',true],['plans','Floor plans (Design development)',true],['method','Method and assumptions',true]];
 const REP_LAYERS=[['sun','Sun now'],['df','Daylight factor'],['ase','Annual sun exposure'],['air','Air paths']];
 function repDefaults(){ const o={title:'',author:'',levels:'',sections:{},layers:{sun:true,df:true,ase:true,air:true}}; for(const [k,,d] of REP_SECTIONS) o.sections[k]=d; return o; }
 function buildReportUI(){
@@ -1012,7 +1051,7 @@ async function generateReport(){
   finally{ b.disabled=false; }
 }
 function customReportData(){
-  const S=SW.report; const sun=sunResult?reportData('sun'):null, wind=windResult?reportData('wind'):null; const canEff=S.sections.efficiency&&LAB.energy&&LAB.floors, canEn=adv()&&S.sections.energy&&LAB.energy&&LAB.floors; if(!sun&&!wind&&!canEff&&!canEn) return null;
+  const S=SW.report; const sun=sunResult?reportData('sun'):null, wind=windResult?reportData('wind'):null; const canEff=S.sections.efficiency&&LAB.energy&&LAB.floors, canEn=adv()&&S.sections.energy&&LAB.energy&&LAB.floors; const canRain=S.sections.rain&&LAB.rain&&LAB.rain.result; if(!sun&&!wind&&!canEff&&!canEn&&!canRain) return null;
   const out={title:S.title||('Sun, wind and energy study · '+(adv()?'design development':'massing')),settings:[],stats:[],tables:[],notes:[],grids:[],charts:[]};
   if(S.author) out.settings.push(['Prepared by',S.author]); out.settings.push(['Phase',adv()?'Design development':'Massing'],['Generated',new Date().toLocaleString()]);
   const has=(title,keys)=>keys.some(k=>title.indexOf(k)>=0);
@@ -1027,6 +1066,7 @@ function customReportData(){
     for(const t of wind.tables){ if((want('wind')&&has(t.title,F.wind))||(want('vent')&&has(t.title,F.vent))) out.tables.push(t); }
     if(want('method')) out.notes.push(...wind.notes); }
   if(customExtra&&customExtra.grids.length&&want('plans')) out.grids.push(...customExtra.grids);
+  if(want('rain')&&LAB.rain&&LAB.rain.result){ try{ const Rn=LAB.rain.reportData(); if(Rn){ if(S.sections.summary) out.settings.push(...Rn.settings.map(x=>['Rain · '+x[0],x[1]])); out.stats.push(...Rn.stats.map(x=>['Rain · '+x[0],x[1]])); out.tables.push(...Rn.tables); if(Rn.chart) out.charts.push({svg:Rn.chart,title:'Monthly rain yield and irrigation need'}); if(want('method')) out.notes.push(...Rn.notes); } }catch(e){ console.error(e); } }
   if(canEff){ try{ const F=LAB.energy.formReportData(); out.stats.push(...F.stats.map(x=>['Form · '+x[0],x[1]])); if(S.sections.summary) out.settings.push(...F.settings.filter(x=>/Reference|Typical/.test(x[0])).map(x=>['Form · '+x[0],x[1]])); out.tables.push(...F.tables); if(want('method')) out.notes.push(...F.notes.slice(0,3)); }catch(e){ console.error(e); } }
   if(canEn){ try{ const En=LAB.energy.reportData(); out.stats.push(...En.stats.map(x=>['Energy · '+x[0],x[1]])); if(S.sections.summary) out.settings.push(...En.settings.map(x=>['Energy · '+x[0],x[1]])); out.charts.push({svg:En.chart,title:'Monthly energy by end use'}); out.tables.push(...En.tables); if(want('method')) out.notes.push(...En.notes); }catch(e){ console.error(e); } }
   if(!S.sections.summary) out.settings=out.settings.slice(0,3);
@@ -1034,10 +1074,12 @@ function customReportData(){
 }
 /* ---------- hooks and boot ---------- */
 function autoRun(n){ if(!SW||sunResult||busy) return; if(!LAB.site&&n<10){ setTimeout(()=>autoRun(n+1),500); return; } if(LAB.S.impact.mode==='sun'&&LAB.S.impact.sun.scope==='date'){ try{ runCurrent(true); }catch(e){ console.warn(e); } } }
-LAB.hooks.afterUpdate.push(floors=>{ if(!SW) return; siteRaster=null; syncGeometry(); updateGeomInfo(); syncZoneUI(); try{ renderPlan(); }catch(e){ console.error(e); } if(LAB.S.impact.mode==='sun'){ applySunView(); if(sunResult){ stale.sun=true; showStale(); } } if(LAB.S.impact.mode==='wind'&&windResult){ stale.wind=true; showStale(); } });
+LAB.hooks.afterUpdate.push(floors=>{ if(!SW) return; siteRaster=null; syncGeometry(); updateGeomInfo(); syncZoneUI(); try{ renderPlan(); }catch(e){ console.error(e); } if(LAB.rain&&LAB.rain.result){ stale.rain=true; showStale(); if(LAB.S.impact.mode==='rain') renderRain(); } if(LAB.S.impact.mode==='sun'){ applySunView(); if(sunResult){ stale.sun=true; showStale(); } } if(LAB.S.impact.mode==='wind'&&windResult){ stale.wind=true; showStale(); } });
 LAB.hooks.afterSite.push(()=>{ sunResult=null; windResult=null; if(!SW) return; clearOverlay(); if(!busy) rerender(); setTimeout(()=>autoRun(0),400); });
 LAB.hooks.tab.push(name=>{ if(SW) onTab(name); });
 LAB.sim={init(){ initState(); buildUI(); placeControls(); syncGeometry(); updateGeomInfo(); renderSky(); applySunView(); if(LAB.S.impact.mode!=='sun'&&LAB.S.impact.mode!=='wind') setMode('sun'); else runCurrent(false); rerender();
     setTimeout(()=>autoRun(0),900); },
-  sunPos, runCurrent, runSunStudy, runWindStudy, setMode, setStudioMode, reportData, periodInfo, roseFor, DATES, STRATS, solarStudy, ventStudy, terraceWind, windProfile, zoneFor, zoneGlazing, energyChanged, get windResult(){return windResult;}, get sunResult(){return sunResult;}, get SW(){return SW;}};
+  sunPos, runCurrent, runSunStudy, runWindStudy, setMode, setStudioMode, reportData, periodInfo, roseFor, DATES, STRATS, solarStudy, ventStudy, terraceWind, windProfile, zoneFor, zoneGlazing, energyChanged, exposurePass, setOverlay, dni,
+  markStale(kind){ stale[kind]=true; showStale(); }, rerenderRain:renderRain, afterImport(){ if(!SW) return; updateGeomInfo(); if(adv()) setTimeout(maybeSliceDialog,0); },
+  get windResult(){return windResult;}, get sunResult(){return sunResult;}, get SW(){return SW;}};
 })();
