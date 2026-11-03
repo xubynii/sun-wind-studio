@@ -98,14 +98,14 @@ function selHTML(S){ if(!S.sel.size) return `<p class="ps pd-pickhint">Click a p
   return `<div class="pd-pick"><div class="pd-stephead"><span class="sw lg" style="background:#E8692B"></span><h3>${ids.length} piece${ids.length>1?'s':''} selected</h3><button type="button" class="btn small" id="pt-selclear">Clear</button></div>
   <p class="ps">Now: ${Object.entries(t).map(([c,n])=>NAME[c]+(n>1?' ×'+n:'')).join(', ')} · on ${Object.keys(ly).map(esc).join(', ')}${size}${ids.some(i=>S.pieceChoice[i])?' · set by hand':''}</p>
   <div class="pd-q"><label class="lvl">Label as <select id="pt-sellabel">${CATS.map(c=>`<option value="${c[0]}"${c[0]===cur?' selected':''}>${c[1]}</option>`).join('')}</select></label><button type="button" class="btn primary small" id="pt-selapply">Assign</button>${ids.some(i=>S.pieceChoice[i])?'<button type="button" class="btn small" id="pt-selreset">Back to the scan</button>':''}</div>
-  <div class="pd-q"><button type="button" class="btn small" id="pt-sellayer">Select the whole layer</button><button type="button" class="btn small" id="pt-selsimilar">Select the same part</button></div></div>`; }
+  ${ids.length===1&&(S.cat[ids[0]]==='floor'||S.cat[ids[0]]==='roof'||Math.max(S.info[ids[0]].up,S.info[ids[0]].down)>0.6*S.info[ids[0]].tot)?'<div class="pd-q"><button type="button" class="btn small" id="pt-selground">Make this the ground floor</button></div>':''}<div class="pd-q"><button type="button" class="btn small" id="pt-sellayer">Select the whole layer</button><button type="button" class="btn small" id="pt-selsimilar">Select the same part</button></div></div>`; }
 function pick(e,add){ if(!V||!state) return; const S=state; const el=V.r.domElement, r=el.getBoundingClientRect(); const ray=new THREE.Raycaster(); ray.setFromCamera({x:((e.clientX-r.left)/r.width)*2-1,y:-((e.clientY-r.top)/r.height)*2+1},V.cam);
   const meshes=V.grp.children.filter(o=>o.isMesh&&o.userData.owner); const hits=ray.intersectObjects(meshes,false); const hit=hits.find(h=>!h.object.material.transparent)||hits[0]; let i=-1; if(hit&&hit.faceIndex!=null) i=hit.object.userData.owner[hit.faceIndex];
   if(i<0){ if(!add){ S.sel.clear(); render(); } return; }
   if(add){ if(S.sel.has(i)) S.sel.delete(i); else S.sel.add(i); } else { if(S.sel.size===1&&S.sel.has(i)) S.sel.clear(); else { S.sel.clear(); S.sel.add(i); } } render(); }
 function stepHTML(S){ const st=steps(S); if(!st.length) return '<p class="empty">Nothing recognisable was found in the massing layer.</p>'; const k=S.cur, idx=st.indexOf(k); const ids=idsOf(S,k);
   const layers={}; for(const i of ids){ const L=S.pieces[i].layerName||'model'; layers[L]=(layers[L]||0)+1; } const ans=S.confirmed[k];
-  const sum=k==='ground'?`The ground floor is the plate at model z <input type="number" id="pt-ground" step="0.05" value="${S.groundZ}" aria-label="Ground floor level, model z"> m. Everything below it becomes basement.`:(S.sum[k]||'');
+  const gi=S.levels.length?nearestLevel(S,S.groundZ):-1; const sum=k==='ground'?`The ground floor is the plate at model z <input type="number" id="pt-ground" step="0.05" value="${S.groundZ}" aria-label="Ground floor level, model z"> m. Everything below it becomes basement. Pick another level:<span class="pd-levels">${S.levels.map((z,i)=>`<button type="button" class="pd-lv${i===gi?' on':''}" data-glevel="${i}" title="Level at model z ${z.toFixed(2)} m">${i<gi?'B'+(gi-i):'L'+(i-gi+1)}<small>${z.toFixed(1)}</small></button>`).join('')}</span>`:(S.sum[k]||'');
   return `<div class="pd-stephead"><span class="sw lg" style="background:${COL[k]}"></span><h3>${NAME[k]}</h3><span class="ps">${idx+1} of ${st.length}</span></div>
   <p class="pd-sum">${sum}</p>
   <p class="ps">${ids.length} piece${ids.length===1?'':'s'} on ${Object.keys(layers).length} layer${Object.keys(layers).length===1?'':'s'}: ${Object.entries(layers).map(([L,n])=>`<b>${esc(L)}</b>${n>1?' ×'+n:''}`).join(', ')}</p>
@@ -125,13 +125,16 @@ function render(){ const S=state; const card=$('parts-dialog'); if(!card) return
   const host=q('#pt-view'); if(V){ V.host=host; host.insertBefore(V.r.domElement,host.firstChild); V.ro.disconnect(); V.ro.observe(host); } else viewer(host); paint();
   q('#pt-close').onclick=close; q('#pt-skip').onclick=()=>{ close(); if(LAB.sim&&LAB.sim.afterImport) LAB.sim.afterImport(); }; q('#pt-apply').onclick=apply; q('#pt-frame').onclick=frame;
   q('#pt-ghost').onchange=e=>{ S.ghost=e.target.checked; paint(); };
-  card.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{ S.cur=b.dataset.step; S.showLayer=null; S.fix=null; render(); });
-  const go=d=>{ const s2=steps(S); const i=s2.indexOf(S.cur)+d; if(i>=0&&i<s2.length){ S.cur=s2[i]; S.fix=null; render(); } };
+  card.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{ S.cur=b.dataset.step; S.showLayer=null; S.fix=null; S.sel.clear(); render(); });
+  const go=d=>{ const s2=steps(S); const i=s2.indexOf(S.cur)+d; if(i>=0&&i<s2.length){ S.cur=s2[i]; S.fix=null; S.sel.clear(); render(); } };
   const pv=q('#pt-prev'), nx=q('#pt-next'); if(pv) pv.onclick=()=>go(-1); if(nx) nx.onclick=()=>go(1);
-  const y=q('#pt-yes'); if(y) y.onclick=()=>{ S.confirmed[S.cur]=true; S.fix=null; const s2=steps(S); const i=s2.indexOf(S.cur); if(i<s2.length-1) S.cur=s2[i+1]; render(); };
+  const y=q('#pt-yes'); if(y) y.onclick=()=>{ S.confirmed[S.cur]=true; S.fix=null; S.sel.clear(); const s2=steps(S); const i=s2.indexOf(S.cur); if(i<s2.length-1) S.cur=s2[i+1]; render(); };
   const n=q('#pt-no'); if(n) n.onclick=()=>{ S.fix=S.fix===S.cur?null:S.cur; render(); };
   const nh=q('#pt-none-here'); if(nh) nh.onclick=()=>{ S.confirmed[S.cur]=false; S.fix=null; go(1); render(); };
-  const sa=q('#pt-selapply'); if(sa) sa.onclick=()=>{ const v=q('#pt-sellabel').value; for(const i of S.sel) S.pieceChoice[i]=v; classify(); S.cur=v==='other'?S.cur:v; S.showLayer=null; render(); };
+  const setGround=i=>{ S.groundZ=+S.info[i].z1.toFixed(2); if(S.cat[i]!=='floor') S.pieceChoice[i]='floor'; classify(); S.cur='ground'; S.confirmed.ground=true; S.sel.clear(); S.showLayer=null; render(); };
+  const sa=q('#pt-selapply'); if(sa) sa.onclick=()=>{ const v=q('#pt-sellabel').value; const ids=[...S.sel]; if(v==='ground'){ setGround(ids.reduce((a,i)=>S.info[i].z1<S.info[a].z1?i:a,ids[0])); return; } for(const i of ids) S.pieceChoice[i]=v; classify(); S.cur=v==='other'?S.cur:v; S.showLayer=null; S.sel.clear(); render(); };
+  const sg=q('#pt-selground'); if(sg) sg.onclick=()=>setGround([...S.sel][0]);
+  card.querySelectorAll('[data-glevel]').forEach(b=>b.onclick=()=>{ S.groundZ=+S.levels[+b.dataset.glevel].toFixed(2); S.confirmed.ground=true; render(); });
   const sr=q('#pt-selreset'); if(sr) sr.onclick=()=>{ for(const i of S.sel) delete S.pieceChoice[i]; classify(); render(); };
   const sc=q('#pt-selclear'); if(sc) sc.onclick=()=>{ S.sel.clear(); render(); };
   const sl=q('#pt-sellayer'); if(sl) sl.onclick=()=>{ const Ls=new Set([...S.sel].map(i=>S.pieces[i].layerName||'model')); S.pieces.forEach((p,i)=>{ if(Ls.has(p.layerName||'model')) S.sel.add(i); }); render(); };
