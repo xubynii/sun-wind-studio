@@ -57,12 +57,13 @@ async function parse3DM(buf){
 /* ---------- import dialog: layers → massing / shading / pv / context / ignore ---------- */
 let pending=null;
 function guessRole(name){
+  if(/topo|terrain|dem\b|contour|grade|landform|ground surface/i.test(name)) return 'terrain';
   if(/pv|photovolt|solar panel|bipv|collector/i.test(name)) return 'pv';
   if(/shad|fin|louv|brise|overhang|canop|screen|sunbreak|balcon|awning/i.test(name)) return 'shading';
   if(/site|context|exist|herit|plaza|road|curb|ground|topo|tree|future|block|surround|neighbo/i.test(name)) return 'context';
   return 'massing';
 }
-const ROLES=[['massing','tower massing'],['shading','shading device (Advanced)'],['pv','PV surface (Advanced)'],['context','site context'],['ignore','ignore']];
+const ROLES=[['massing','tower massing'],['shading','shading device (Design development)'],['pv','PV surface (Design development)'],['context','site context'],['terrain','terrain · ground surface'],['ignore','ignore']];
 function showImportDialog(meshes,name){
   const groups={}; for(const m of meshes){ const k=m.layerName||'model'; const g=groups[k]||(groups[k]={n:0,kinds:{},top:-1e9}); g.n++; g.kinds[m.kind||'mesh']=(g.kinds[m.kind||'mesh']||0)+1; g.top=Math.max(g.top,m.top); }
   pending={meshes,name,groups};
@@ -75,14 +76,14 @@ function showImportDialog(meshes,name){
 function applyImport(){
   if(!pending) return; const roles={}; document.querySelectorAll('#import-layers select').forEach(s=>{ roles[s.dataset.layer]=s.value; });
   const by=r=>pending.meshes.filter(m=>roles[m.layerName||'model']===r);
-  const massing=by('massing'), shading=by('shading'), pv=by('pv'), ctx=by('context');
+  const massing=by('massing'), shading=by('shading'), pv=by('pv'), terrain=by('terrain'); for(const m of terrain){ m.layer='terrain'; m.isTerrain=true; } const ctx=by('context').concat(terrain);
   const origin=(LAB.site&&LAB.site.meta&&LAB.site.meta.origin)?LAB.site.meta.origin:[0,0];
   // a file in the base model's coordinate system (site block centre near the Vancouver origin) is shifted onto the tool's origin
   const all=pending.meshes; let cx=0,cy=0,n=0; for(const m of all) for(let i=0;i<m.v.length;i+=3){ cx+=m.v[i]; cy+=m.v[i+1]; n++; } cx/=Math.max(1,n); cy/=Math.max(1,n);
   const inBase=Math.hypot(cx-origin[0],cy-origin[1])<400&&Math.hypot(origin[0],origin[1])>10;
   if(inBase){ for(const m of all) for(let i=0;i<m.v.length;i+=3){ m.v[i]-=origin[0]; m.v[i+1]-=origin[1]; } }
   const msg=[];
-  if(ctx.length){ if($('c-import-replace').checked||!LAB.site){ applySite(ctx,pending.name); } else { for(const m of ctx){ m.layer=/herit/i.test(m.layerName||'')?'heritage':'existing'; LAB.site.meshes.push(m); } LAB.buildSite(); } msg.push(ctx.length+' context objects'); }
+  if(ctx.length){ if($('c-import-replace').checked||!LAB.site){ applySite(ctx,pending.name); } else { levelTerrain(ctx); for(const m of ctx){ if(!m.isTerrain) m.layer=/herit/i.test(m.layerName||'')?'heritage':'existing'; LAB.site.meshes.push(m); } LAB.buildSite(); } msg.push(ctx.length+' context objects'+(terrain.length?' including '+terrain.length+' terrain surface'+(terrain.length>1?'s':'')+' (ground at the tower set to 0 m; the rain study will route run-off over it)':'')); }
   if(massing.length){
     const U=voxelize(massing); LAB.upload=U; const S=LAB.S; S.typology='upload'; S.height=Math.round(U.top); S.step={mode:'none'}; S.overrides={}; S.voids=[];
     if(LAB.site&&LAB.site.site&&Math.hypot(U.cx,U.cy)<200){ S.posX=Math.round(U.cx); S.posY=Math.round(U.cy); } else { S.posX=0; S.posY=0; }
@@ -172,12 +173,19 @@ async function handleFile(file){
     showImportDialog(meshes,file.name);
   }catch(e){ console.error(e); status(e.message||String(e),true); }
 }
+/* a terrain surface sets the datum: the ground at the tower's position becomes z = 0, so the tower's base sits on the ground and the
+   drainage study reads pond levels against the ground floor; everything imported with it shifts by the same amount */
+function terrainZAt(T,x,y){ let nz=null, nd=Infinity; for(const m of T){ for(let i=0;i<m.f.length;i+=3){ const a=m.f[i]*3,b=m.f[i+1]*3,c=m.f[i+2]*3; const ax=m.v[a],ay=m.v[a+1],bx=m.v[b],by=m.v[b+1],cx=m.v[c],cy=m.v[c+1]; const det=(bx-ax)*(cy-ay)-(cx-ax)*(by-ay); if(Math.abs(det)>1e-9){ const l1=((bx-x)*(cy-y)-(cx-x)*(by-y))/det, l2=((cx-x)*(ay-y)-(ax-x)*(cy-y))/det, l3=1-l1-l2; if(l1>=-1e-6&&l2>=-1e-6&&l3>=-1e-6) return l1*m.v[a+2]+l2*m.v[b+2]+l3*m.v[c+2]; } }
+    for(let i=0;i<m.v.length;i+=3){ const d=Math.hypot(m.v[i]-x,m.v[i+1]-y); if(d<nd){ nd=d; nz=m.v[i+2]; } } } return nz; }
+function levelTerrain(meshes){ const T=meshes.filter(m=>m.isTerrain||m.layer==='terrain'); if(!T.length) return 0; const S=LAB.S; const z0=terrainZAt(T,S.posX,S.posY); if(z0==null||!isFinite(z0)) return 0;
+  for(const m of meshes){ for(let i=2;i<m.v.length;i+=3) m.v[i]-=z0; if(typeof m.top==='number') m.top-=z0; } return z0; }
 function applySite(meshes,name){
   if(meshes.meta){ LAB.site=meshes; }
   else {
     let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9; for(const m of meshes) for(let i=0;i<m.v.length;i+=3){ minx=Math.min(minx,m.v[i]); maxx=Math.max(maxx,m.v[i]); miny=Math.min(miny,m.v[i+1]); maxy=Math.max(maxy,m.v[i+1]); }
-    const cx=(minx+maxx)/2, cy=(miny+maxy)/2; for(const m of meshes) for(let i=0;i<m.v.length;i+=3){ m.v[i]-=cx; m.v[i+1]-=cy; }
-    LAB.site={meta:{source:name,units:'m',origin:[cx,cy],north:'+y'},site:null,meshes,future:[],curves:[],labels:[],uses:[]};
+    const cx=(minx+maxx)/2, cy=(miny+maxy)/2; for(const m of meshes){ for(let i=0;i<m.v.length;i+=3){ m.v[i]-=cx; m.v[i+1]-=cy; } if(!m.layer||(!m.isTerrain&&m.layer!=='heritage')) m.layer=m.isTerrain?'terrain':'existing'; }
+    const dz=levelTerrain(meshes);
+    LAB.site={meta:{source:name,units:'m',origin:[cx,cy],datum:dz,north:'+y'},site:null,meshes,future:[],curves:[],labels:[],uses:[]};
   }
   LAB.buildSite(); LAB.update(); status(`Site replaced by ${name}: ${meshes.length||meshes.meshes.length} meshes. Restore the Vancouver site any time.`);
 }

@@ -99,9 +99,28 @@ let overlayMesh=null, overlayTex=null, overlayData=new Uint8Array(DOM.nx*DOM.ny*
 function ensureOverlay(){
   if(overlayMesh) return;
   overlayTex=new THREE.DataTexture(overlayData,DOM.nx,DOM.ny,THREE.RGBAFormat); overlayTex.minFilter=THREE.LinearFilter; overlayTex.magFilter=THREE.LinearFilter;
-  overlayMesh=new THREE.Mesh(new THREE.PlaneGeometry(DOM.xmax-DOM.xmin,DOM.ymax-DOM.ymin),new THREE.MeshBasicMaterial({map:overlayTex,transparent:true,depthWrite:false}));
+  overlayMesh=new THREE.Mesh(new THREE.PlaneGeometry(DOM.xmax-DOM.xmin,DOM.ymax-DOM.ymin,DOM.nx/2,DOM.ny/2),new THREE.MeshBasicMaterial({map:overlayTex,transparent:true,depthWrite:false}));
   overlayMesh.rotation.x=-Math.PI/2; overlayMesh.position.set((DOM.xmin+DOM.xmax)/2,0.3,-(DOM.ymin+DOM.ymax)/2); overlayMesh.renderOrder=2; LAB.overlayGroup.add(overlayMesh);
+  setOverlayHeights(terrainDEM());
 }
+/* ---------- terrain: a ground elevation grid from meshes imported as terrain; flat (all zero) without one ---------- */
+let demCache={key:null,dem:null,has:false};
+function terrainDEM(){
+  const site=LAB.site; const key=site?site.meshes.filter(m=>m.layer==='terrain').length+':'+(site.meta&&site.meta.source):'none'; if(demCache.key===key) return demCache;
+  const cs=DOM.cs, nx=DOM.nx, ny=DOM.ny, N=nx*ny; const dem=new Float32Array(N); const hit=new Uint8Array(N); let any=false;
+  if(site) for(const m of site.meshes){ if(m.layer!=='terrain') continue; any=true;
+    for(let i=0;i<m.f.length;i+=3){ const a=m.f[i]*3,b=m.f[i+1]*3,c=m.f[i+2]*3; const ax=m.v[a],ay=m.v[a+1],az=m.v[a+2],bx=m.v[b],by=m.v[b+1],bz=m.v[b+2],qx=m.v[c],qy=m.v[c+1],qz=m.v[c+2];
+      const det=(bx-ax)*(qy-ay)-(qx-ax)*(by-ay); if(Math.abs(det)<1e-9) continue;
+      const x0=Math.max(0,Math.floor((Math.min(ax,bx,qx)-DOM.xmin)/cs)), x1=Math.min(nx-1,Math.floor((Math.max(ax,bx,qx)-DOM.xmin)/cs)), y0=Math.max(0,Math.floor((Math.min(ay,by,qy)-DOM.ymin)/cs)), y1=Math.min(ny-1,Math.floor((Math.max(ay,by,qy)-DOM.ymin)/cs));
+      for(let iy=y0;iy<=y1;iy++){ const py=DOM.ymin+(iy+0.5)*cs; for(let ix=x0;ix<=x1;ix++){ const px=DOM.xmin+(ix+0.5)*cs; const l1=((bx-px)*(qy-py)-(qx-px)*(by-py))/det, l2=((qx-px)*(ay-py)-(ax-px)*(qy-py))/det, l3=1-l1-l2; if(l1<-1e-6||l2<-1e-6||l3<-1e-6) continue; const z=l1*az+l2*bz+l3*qz; const k=iy*nx+ix; if(!hit[k]||z>dem[k]){ dem[k]=z; hit[k]=1; } } } } }
+  if(any){ // fill cells outside the terrain mesh with the nearest sampled height so the grid is continuous
+    for(let pass=0;pass<40;pass++){ let changed=false; const src=hit.slice(); for(let k=0;k<N;k++){ if(src[k]) continue; const x=k%nx, y=(k/nx)|0; let s=0,n=0; for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){ const xx=x+dx,yy=y+dy; if(xx<0||yy<0||xx>=nx||yy>=ny) continue; const j=yy*nx+xx; if(src[j]){ s+=dem[j]; n++; } } if(n){ dem[k]=s/n; hit[k]=1; changed=true; } } if(!changed) break; } }
+  demCache={key,dem,has:any,min:any?Math.min(...dem):0,max:any?Math.max(...dem):0}; return demCache;
+}
+/* the overlay plane follows the terrain so ponds and flow paths sit on the ground; the flat ground plane drops below the lowest terrain */
+function setOverlayHeights(T){ if(!overlayMesh) return; const g=overlayMesh.geometry; const pos=g.attributes.position; const segX=DOM.nx/2, segY=DOM.ny/2; let i=0;
+  for(let iy=0;iy<=segY;iy++) for(let ix=0;ix<=segX;ix++){ let z=0; if(T.has){ const cx=Math.min(DOM.nx-1,ix*2), cy=Math.min(DOM.ny-1,(segY-iy)*2); z=T.dem[cy*DOM.nx+cx]; } pos.setZ(i++,z); }
+  pos.needsUpdate=true; g.computeBoundingSphere(); if(T.has){ LAB.ground.position.y=Math.min(-0.05,T.min-0.5); } else LAB.ground.position.y=-0.05; LAB.requestRender(); }
 function setOverlay(fn){
   ensureOverlay();
   for(let iy=0;iy<DOM.ny;iy++) for(let ix=0;ix<DOM.nx;ix++){ const k=(iy*DOM.nx+ix)*4; const c=fn(ix,iy); if(c){ overlayData[k]=c[0]; overlayData[k+1]=c[1]; overlayData[k+2]=c[2]; overlayData[k+3]=c[3]; } else overlayData[k+3]=0; }
@@ -126,7 +145,7 @@ function buildSiteRaster(){
   const site=LAB.site; const cs=4, nx=DOM.nx/2, ny=DOM.ny/2, N=nx*ny;
   const H=new Float32Array(N); const bld=[];
   if(site){
-    for(const m of site.meshes){ if(m.top<3) continue;
+    for(const m of site.meshes){ if(m.top<3||m.layer==='terrain') continue;
       let fp=0, sx=0, sy=0, n=0;
       for(let i=0;i<m.f.length;i+=3){ const a=m.f[i]*3,b=m.f[i+1]*3,c=m.f[i+2]*3;
         const ax=m.v[a],ay=m.v[a+1],bx=m.v[b],by=m.v[b+1],cx=m.v[c],cy=m.v[c+1];
@@ -1017,7 +1036,7 @@ function updateLegend(){
   runBtn.textContent=m==='wind'?(adv()?'Run wind & ventilation':'Run wind'):(adv()?'Run sun & daylight':'Run sun'); runBtn.disabled=busy;
   if(m==='sun'){ const r=sunResult; const yr=r&&r.scope==='period'; const hi=r?(yr?fmtI(Math.max(4,800*r.period.days/365)):Math.round(r.hours*0.8)):'8'; const lo=r?r.th[0]:1; el.className='ramp'; el.innerHTML=`<div class="bar" style="background:linear-gradient(90deg,#F2C46B,#7A2E8E)"></div><div class="lbls"><span>${lo} h of new shadow${yr?(r.period.full?' / yr':' in period'):''}</span><span>${r?'':'run to see the map · '}${hi}+ h</span></div>`; }
   else if(m==='wind'){ const v=LAB.S.impact.wind.view||'comfort'; if(v==='comfort'){ el.className='ramp bands'; el.innerHTML=`<div class="bar">${BAND_COL.map(c=>`<i style="background:${c}"></i>`).join('')}</div><div class="lbls"><span>sitting ≤ 2.5</span><span>standing</span><span>strolling</span><span>walking</span><span>uncomfortable > 8 m/s</span></div>`; } else { el.className='ramp'; el.innerHTML=`<div class="bar" style="background:linear-gradient(90deg,#3E8E7E,var(--line2) 50%,#B8362B)"></div><div class="lbls"><span>calmer ${v==='strat'?'with the strategies':'with the tower'}</span><span>windier</span></div>`; } }
-  else if(m==='rain'){ runBtn.textContent='Run rain'; el.className='ramp'; el.innerHTML=`<div class="bar" style="background:linear-gradient(90deg,#CFE3F2,#2F6FA8)"></div><div class="lbls"><span>ground kept dry by the building in a driving-rain storm</span><span>${LAB.rain&&LAB.rain.result?'sheltered':'run to see the rain shadow'}</span></div>`; }
+  else if(m==='rain'){ runBtn.textContent='Run rain'; const r=LAB.rain&&LAB.rain.result; const pd=r&&r.pond&&!r.pond.flat?r.pond:null; const maxD=pd&&pd.ponds.length?Math.max(...pd.ponds.map(p=>p.maxD)):0; el.className='ramp bands'; el.innerHTML=`<div class="bar"><i style="background:#A8B2C0"></i><i style="background:#3C82CD"></i><i style="background:linear-gradient(90deg,#96C8EB,#14468F)"></i></div><div class="lbls"><span>kept dry by the building</span><span>run-off path</span><span>${pd?(pd.ponds.length?'ponds, to '+(maxD*1000).toFixed(0)+' mm deep':'no ponds'):(r?'ponds need a terrain':'run to see the rain shadow')}</span></div>`; }
   else { el.className='ramp'; el.innerHTML=`<div class="bar"></div><div class="lbls"><span>No overlay · choose Sun, Wind or Rain</span><span></span></div>`; }
 }
 /* ---------- LEED v4.1 scorecard (Design development) ---------- */
@@ -1092,12 +1111,32 @@ function customReportData(){
 /* ---------- hooks and boot ---------- */
 function autoRun(n){ if(!SW||sunResult||busy) return; if((!LAB.site||CLIMATE.pending)&&n<12){ setTimeout(()=>autoRun(n+1),500); return; } if(LAB.S.impact.mode==='sun'&&LAB.S.impact.sun.scope==='date'){ try{ runCurrent(true); }catch(e){ console.warn(e); } } }
 LAB.hooks.afterUpdate.push(floors=>{ if(!SW) return; siteRaster=null; syncGeometry(); updateGeomInfo(); syncZoneUI(); try{ renderPlan(); }catch(e){ console.error(e); } if(LAB.rain&&LAB.rain.result){ stale.rain=true; showStale(); if(LAB.S.impact.mode==='rain') renderRain(); } if(LAB.S.impact.mode==='sun'){ applySunView(); if(sunResult){ stale.sun=true; showStale(); } } if(LAB.S.impact.mode==='wind'&&windResult){ stale.wind=true; showStale(); } });
-LAB.hooks.afterSite.push(()=>{ sunResult=null; windResult=null; try{ flattenLabels(); }catch(e){ console.warn(e); } if(!SW) return; clearOverlay(); if(!busy) rerender(); setTimeout(()=>autoRun(0),400); });
+LAB.hooks.afterSite.push(()=>{ sunResult=null; windResult=null; demCache={key:null,dem:null,has:false}; try{ flattenLabels(); LAB.siteGroup.traverse(o=>{ if(o.isMesh&&o.userData.layer==='terrain'){ o.material=o.material.clone(); o.material.color.set(cssVar('--ground')||'#CBD3DA'); } }); if(overlayMesh) setOverlayHeights(terrainDEM()); }catch(e){ console.warn(e); } if(!SW) return; clearOverlay(); if(!busy) rerender(); setTimeout(()=>autoRun(0),400); });
 LAB.hooks.afterWeather.push(()=>{ if(!SW) return; syncPeriodUI(); renderSky(); if(sunResult){ stale.sun=true; } if(windResult){ stale.wind=true; } if(LAB.rain&&LAB.rain.result){ stale.rain=true; } showStale(); if(!busy) rerender(); });
 LAB.hooks.tab.push(name=>{ if(SW) onTab(name); });
+/* ---------- pick the mass in the viewport and nudge it on the site with the arrow keys ---------- */
+let massSel=false, selHelper=null, mDown=null; const vpEl=LAB.renderer.domElement.parentElement;
+function massTargets(){ const t=[]; for(const g of [advGroup,lodGroup,dressGroup,LAB.towerGroup]){ if(!g||!g.visible) continue; g.traverse(o=>{ if(o.isMesh&&o.visible&&!o.userData.deco&&!o.userData.labelPlane) t.push(o); }); } return t; }
+function refreshMassSel(){ if(selHelper){ LAB.scene.remove(selHelper); selHelper.geometry.dispose(); selHelper.material.dispose(); selHelper=null; } const hint=$('mass-hint'); hint.hidden=!massSel; if(!massSel){ LAB.requestRender(); return; }
+  const box=new THREE.Box3(); for(const o of massTargets()) box.expandByObject(o); if(box.isEmpty()){ massSel=false; hint.hidden=true; return; } box.expandByScalar(0.8);
+  selHelper=new THREE.Box3Helper(box,new THREE.Color(cssVar('--accent')||'#C8552D')); selHelper.userData.deco=true; selHelper.renderOrder=5; LAB.scene.add(selHelper); LAB.requestRender(); }
+vpEl.addEventListener('pointerdown',e=>{ mDown=e.target.closest('.viewtools,.abar,.hud,.compass')?null:{x:e.clientX,y:e.clientY,b:e.button}; });
+vpEl.addEventListener('pointerup',e=>{ const d=mDown; mDown=null; if(!d||d.b!==0) return; if(Math.hypot(e.clientX-d.x,e.clientY-d.y)>5) return;
+  const el=LAB.renderer.domElement, r=el.getBoundingClientRect(); const ray=new THREE.Raycaster(); ray.setFromCamera({x:((e.clientX-r.left)/r.width)*2-1,y:-((e.clientY-r.top)/r.height)*2+1},view.ortho?orthoCam:LAB.camera);
+  const hit=ray.intersectObjects(massTargets(),false).length>0; const was=massSel; massSel=hit; if(massSel||was) refreshMassSel(); });
+window.addEventListener('keydown',e=>{ if(!massSel) return; const t=e.target; if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable)) return;
+  if(e.key==='Escape'){ massSel=false; refreshMassSel(); return; }
+  let dx=0, dy=0, rot=0; if(e.key==='ArrowUp') dy=1; else if(e.key==='ArrowDown') dy=-1; else if(e.key==='ArrowRight') dx=1; else if(e.key==='ArrowLeft') dx=-1; else if(e.key==='['||e.key==='PageDown') rot=-1; else if(e.key===']'||e.key==='PageUp') rot=1; else return;
+  e.preventDefault(); const S=LAB.S, P=LAB.PARAMS, step=e.shiftKey?5:1;
+  // the arrows follow the screen: "up" is the way the camera looks along the ground, snapped to the nearest compass axis
+  const th=LAB.orbit.theta; const fx=-Math.sin(th), fy=Math.cos(th); let ux,uy; if(Math.abs(fx)>=Math.abs(fy)){ ux=Math.sign(fx)||1; uy=0; } else { ux=0; uy=Math.sign(fy)||1; } const rx=uy, ry=-ux;
+  const mx=(dy*ux+dx*rx)*step, my=(dy*uy+dx*ry)*step; const clamp=(v,p)=>Math.max(p.min,Math.min(p.max,v));
+  if(mx||my){ S.posX=clamp(S.posX+mx,P.posX); S.posY=clamp(S.posY+my,P.posY); } if(rot) S.rotDeg=clamp(S.rotDeg+rot*(e.shiftKey?15:5),P.rotDeg);
+  LAB.update(); });
+LAB.hooks.afterUpdate.push(()=>{ if(massSel) refreshMassSel(); });
 LAB.sim={init(){ initState(); buildUI(); placeControls(); syncGeometry(); updateGeomInfo(); renderSky(); applySunView(); if(LAB.S.impact.mode!=='sun'&&LAB.S.impact.mode!=='wind') setMode('sun'); else runCurrent(false); rerender();
     setTimeout(()=>autoRun(0),900); },
-  sunPos, runCurrent, runSunStudy, runWindStudy, setMode, setStudioMode, reportData, periodInfo, roseFor, DATES, STRATS, solarStudy, ventStudy, terraceWind, windProfile, zoneFor, zoneGlazing, energyChanged, exposurePass, setOverlay, dni,
+  sunPos, runCurrent, runSunStudy, runWindStudy, setMode, setStudioMode, reportData, periodInfo, roseFor, DATES, STRATS, solarStudy, ventStudy, terraceWind, windProfile, zoneFor, zoneGlazing, energyChanged, exposurePass, setOverlay, dni, terrainDEM, towerRaster, plazaCellsAt, buildSiteRaster:()=>{ if(!siteRaster) buildSiteRaster(); return siteRaster; }, DOM,
   markStale(kind){ stale[kind]=true; showStale(); }, rerenderRain:renderRain, afterImport(){ if(!SW) return; updateGeomInfo(); if(adv()) setTimeout(maybeSliceDialog,0); },
   get windResult(){return windResult;}, get sunResult(){return sunResult;}, get SW(){return SW;}};
 })();
