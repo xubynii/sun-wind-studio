@@ -56,6 +56,7 @@ then open http://localhost:8000/. Any static host works the same way. PDFs downl
 | `climate.js` | Vancouver climate: loads `weather.json` at boot, typed normals as fallback |
 | `weather.json` | CWEC2020 typical year for Vancouver Intl AP (WMO 718920) distilled from the EPW: hourly temperature, wind, irradiation; monthly normals; monthly and annual wind roses; rain rose and ISO 15927-3 driving-rain sums (monthly rainfall normals from the station's .stat file, spread over overcast humid hours, since the EPW carries no hourly rain) |
 | `viz.js` | drawing kit: bars, paired bars, stacked bands, roses, compass bars, line charts, façade maps, monthly bars, gauges, radar and donut figures shared by the panel and the PDF |
+| `figdocs.js` | figure explainers: click any diagram in the review panel for what it shows, how to read it, how it is computed, what good looks like, design moves and sources |
 | `report.js` | PDF reports (jsPDF) |
 | `site.json`, `rhino3dm.min.js`, `rhino3dm.wasm` | downtown Vancouver site model and the Rhino loader |
 

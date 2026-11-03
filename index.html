@@ -165,6 +165,19 @@ details summary::-webkit-details-marker{display:none}
 .figrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .figrow .fig{margin:8px 0 0}
 .empty{color:var(--muted);font-size:12px}
+.fig[data-fig]{cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.fig[data-fig]:hover,.fig[data-fig]:focus-visible{border-color:var(--accent);box-shadow:0 1px 6px rgba(0,0,0,.08);outline:none}
+.fig[data-fig] figcaption::after{content:'Explain ↗';float:right;margin-left:8px;color:var(--accent);font-weight:500}
+.review.sheet>:not(.fig-sheet){display:none}
+.fig-sheet{max-width:720px}
+.fig-sheet .fs-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.fig-sheet .fs-head h2{margin:0}
+.fig-sheet .fs-fig{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px}
+.fig-sheet .fs-fig svg{width:100%;height:auto;display:block}
+.fig-sheet .fs-cap{font:400 12px/1.5 var(--font-m);color:var(--muted);margin:6px 0 14px}
+.fig-sheet h3{margin:16px 0 4px}
+.fig-sheet p,.fig-sheet li{font-size:13px;line-height:1.55}
+.fig-sheet ul{margin:4px 0 0;padding-left:18px}
 .reads li{margin:0 0 6px}
 .reads li::marker{color:var(--sun)}
 .banner{margin:0 0 10px;padding:9px 12px;border-radius:var(--r);background:var(--panel);border:1px solid var(--line);font-size:12.5px;line-height:1.45;color:var(--muted)}
@@ -451,6 +464,7 @@ h2 .help{order:0}
     </main>
 
     <aside class="review">
+      <div id="fig-sheet" class="fig-sheet" hidden></div>
       <p class="banner" id="mode-banner"></p>
       <div id="plan-home"><div class="adv" id="plan-block" hidden>
         <h2>Floor plan · sun, daylight and air inside</h2>
@@ -482,6 +496,7 @@ h2 .help{order:0}
 <script src="energy.js"></script>
 <script src="rain.js"></script>
 <script src="help.js"></script>
+<script src="figdocs.js"></script>
 <script src="report.js"></script>
 <script src="io.js"></script>
 <script>
