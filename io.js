@@ -90,7 +90,7 @@ function applyImport(){
     const U=voxelize(massing); U.grade=U.minz<-0.3?Math.min(U.top-2.4,-U.minz):0; LAB.upload=U; const S=LAB.S; S.typology='upload'; S.height=Math.round(U.top-U.grade); S.step={mode:'none'}; S.overrides={}; S.voids=[];
     if(LAB.site&&LAB.site.site&&Math.hypot(U.cx,U.cy)<200){ S.posX=Math.round(U.cx); S.posY=Math.round(U.cy); } else { S.posX=0; S.posY=0; }
     S.rotDeg=0;
-    LAB.uploadRaw={massing,shading,pv,cx:U.cx,cy:U.cy,minz:U.minz,name:pending.name,version:(LAB.uploadRaw?LAB.uploadRaw.version:0)+1};
+    LAB.uploadRaw={massing,shading,pv,cx:U.cx,cy:U.cy,minz:U.minz,name:pending.name,inBase,version:(LAB.uploadRaw?LAB.uploadRaw.version:0)+1};
     msg.push(`massing from ${massing.length} objects: ${(U.top-U.grade).toFixed(0)} m above ground${U.grade>0?' and '+U.grade.toFixed(1)+' m below (model z under 0 is treated as underground)':''}, footprint about ${U.footprint.toLocaleString()} m²; ${LAB.uploadSummary()}`);
     if(shading.length) msg.push(shading.length+' shading objects'); if(pv.length) msg.push(pv.length+' PV objects');
   } else if(shading.length||pv.length){ status('Shading and PV layers need a massing layer in the same file to attach to. Choose a massing layer and import again.',true); return; }
@@ -188,7 +188,7 @@ LAB.uploadFloors=function(S){
     const mask={nx,ny,x0:-w/2,y0:-d/2,cells:new Uint8Array(nx*ny)}; for(let k=0;k<cells.length;k+=2) mask.cells[(cells[k+1]-by0)*nx+(cells[k]-bx0)]=1;
     const c=Math.max(6,Math.min(c0,Math.min(w,d)-8)); const a=S.rotDeg*Math.PI/180, P={x:S.posX+ux*Math.cos(a)-uy*Math.sin(a), y:S.posY+ux*Math.sin(a)+uy*Math.cos(a)};
     const z=under?z0-g:Math.max(0,z0-g), hh=under?h:Math.min(h,z0+h-Math.max(g,z0)); const o=(sl.k!=null&&S.overrides[sl.k])||{};
-    const fl={i:0,z,h:hh,t:Math.max(0,(z+hh/2)/Math.max(1,H)),ux,uy,urot:0,cx:P.x,cy:P.y,rot:a,w,d,seg:0,core:c,coreArea:c*c,edited:Object.keys(o).length>0,manual:!!o.prog,leaseMin:(Math.min(w,d)-c)/2,leaseMax:(Math.max(w,d)-c)/2,ext:w,mask,below:under};
+    const fl={i:0,z,h:hh,t:Math.max(0,(z+hh/2)/Math.max(1,H)),ux,uy,urot:0,cx:P.x,cy:P.y,rot:a,w,d,seg:0,core:c,coreArea:c*c,edited:Object.keys(o).length>0,manual:!!o.prog,leaseMin:(Math.min(w,d)-c)/2,leaseMax:(Math.max(w,d)-c)/2,ext:w,mask,below:under,open:(sl.li!=null&&U.openings)?U.openings[sl.li]:null,ceil:(sl.li!=null&&U.ceilings)?U.ceilings[sl.li]:null};
     if(under) below.push(fl); else { fl.i=out.length; out.push(fl); } }
   below.forEach((fl,i)=>{ fl.i=i; fl.level='B'+(below.length-i); });
   LAB.belowFloors=below;

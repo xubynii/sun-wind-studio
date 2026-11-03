@@ -259,6 +259,9 @@ function buildLOD(){
       const m=body.mesh(MAT.spandrel,{cat:'tower'}); if(m) lodGroup.add(m); } }
   if(A) buildDress(floors,raw);
 }
+/* the glass band of a floor on one face: it hangs from the modeled window head (or the ceiling) when the plates came from the model,
+   otherwise from the top of the floor; the zone's window-to-wall ratio sets the glass height, so the sill drops as the ratio grows */
+function band(f,o,z){ const hh=f.h-GAP; let head=hh; if(f.open&&f.open[o]) head=Math.min(hh,Math.max(0.6,f.open[o][1])); else if(f.ceil) head=Math.min(hh,Math.max(1.8,f.ceil)); const gh=Math.max(0.3,Math.min(head,hh*z.wwr)); return {hh,head,gh,sp:Math.max(0,head-gh)}; }
 /* outline edges of a floor plate with their world orientation, used for the façade */
 function edgesOf(f){ const out=[]; const c=Math.cos(f.rot), s=Math.sin(f.rot); for(const lp of LAB.maskLoops(f)){ const pts=lp.pts, n=pts.length; for(let k=0;k<n;k++){ const a=pts[k], b=pts[(k+1)%n]; const dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy); if(L<0.5) continue;
   const ux=dx/L, uy=dy/L, sgn=lp.outer?1:-1, ox=uy*sgn, oy=-ux*sgn; const wx=ox*c-oy*s, wy=ox*s+oy*c; const deg=((Math.atan2(wy,wx)*180/Math.PI)%360+360)%360; const o=deg<45||deg>=315?'E':(deg<135?'N':(deg<225?'W':'S'));
@@ -267,18 +270,18 @@ function edgesOf(f){ const out=[]; const c=Math.cos(f.rot), s=Math.sin(f.rot); f
 function buildDress(floors,raw){
   const W=SW.ws, T=LAB.top; const glass=new Batch(), shade=new Batch(), pv=new Batch(), green=new Batch(), solid=new Batch(), slabs=new Batch();
   for(const f of floors){ const hh=f.h-GAP; const lvl=f.i+1;
-    for(const e of edgesOf(f)){ const z=zoneFor(e.o,lvl), st=STRATS[z.strat], D=z.depth; const sp=(1-z.wwr)*hh, gh=hh-sp; const L=e.L;
+    for(const e of edgesOf(f)){ const z=zoneFor(e.o,lvl), st=STRATS[z.strat], D=z.depth; const B=band(f,e.o,z), sp=B.sp, gh=B.gh, head=B.head; const L=e.L;
       const at=(uo,vo)=>LAB.toWorld(f,e.mx+e.ux*uo+e.ox*vo,e.my+e.uy*uo+e.oy*vo);
       if(!raw){ if(z.strat==='punched'){ const nW=Math.max(1,Math.floor(L/2.4)), step=L/nW, w=Math.min(1.8,step-0.4); if(w>0.4) for(let i=0;i<nW;i++){ const q=at(-L/2+(i+0.5)*step,0.07); glass.box(q.x,q.y,f.z+sp+gh/2,w,0.12,gh,e.ang); } }
         else { const q=at(0,0.07); glass.box(q.x,q.y,f.z+sp+gh/2,L,0.12,gh,e.ang); }
         if(z.strat==='greenwall'&&sp>0.3){ const q=at(0,0.1); green.box(q.x,q.y,f.z+sp/2,L*0.98,0.1,sp*0.9,e.ang); } }
       if(z.pv>0&&sp>0.2){ const q=at(0,0.12); pv.box(q.x,q.y,f.z+sp/2,L*0.96,0.08,sp*z.pv,e.ang); }
       if(st.device&&D>0&&L>=0.8){
-        if(z.strat==='overhang'){ const q=at(0,D/2); shade.box(q.x,q.y,f.z+hh-0.08,L+0.2,D,0.15,e.ang); }
+        if(z.strat==='overhang'){ const q=at(0,D/2); shade.box(q.x,q.y,f.z+head+0.08,L+0.2,D,0.15,e.ang); }
         else if(z.strat==='louvres'||z.strat==='eggcrate'){ const nl=Math.floor(gh/0.5); for(let i=0;i<nl;i++){ const q=at(0,D/2); shade.box(q.x,q.y,f.z+sp+(i+0.5)*0.5,L,D,0.05,e.ang); } }
         if(z.strat==='fins'||z.strat==='eggcrate'){ const nf=Math.max(1,Math.floor(L/1.5)), step=L/nf; for(let i=0;i<nf;i++){ const q=at(-L/2+(i+0.5)*step,D/2); shade.box(q.x,q.y,f.z+sp+gh/2,0.1,D,gh,e.ang); } }
-        else if(z.strat==='punched'){ const nW=Math.max(1,Math.floor(L/2.4)), step=L/nW, w=Math.min(1.8,step-0.4); if(w>0.4) for(let i=0;i<nW;i++){ const u=-L/2+(i+0.5)*step; let q=at(u,D/2); shade.box(q.x,q.y,f.z+hh-0.08,w+0.3,D,0.15,e.ang); for(const sgn of [-1,1]){ q=at(u+sgn*(w/2+0.08),D/2); shade.box(q.x,q.y,f.z+sp+gh/2,0.15,D,gh,e.ang); } } }
-        else if(z.strat==='lightshelf'){ const q=at(0,D/2); if(gh>2.3) shade.box(q.x,q.y,f.z+sp+2.1,L,D,0.1,e.ang); else shade.box(q.x,q.y,f.z+hh-0.08,L+0.2,D,0.15,e.ang); }
+        else if(z.strat==='punched'){ const nW=Math.max(1,Math.floor(L/2.4)), step=L/nW, w=Math.min(1.8,step-0.4); if(w>0.4) for(let i=0;i<nW;i++){ const u=-L/2+(i+0.5)*step; let q=at(u,D/2); shade.box(q.x,q.y,f.z+head+0.08,w+0.3,D,0.15,e.ang); for(const sgn of [-1,1]){ q=at(u+sgn*(w/2+0.08),D/2); shade.box(q.x,q.y,f.z+sp+gh/2,0.15,D,gh,e.ang); } } }
+        else if(z.strat==='lightshelf'){ const q=at(0,D/2); if(gh>2.3) shade.box(q.x,q.y,f.z+sp+Math.min(2.1,gh-0.3),L,D,0.1,e.ang); else shade.box(q.x,q.y,f.z+head+0.08,L+0.2,D,0.15,e.ang); }
         else if(z.strat==='balcony'){ let q=at(0,D/2); slabs.box(q.x,q.y,f.z+0.1,L+0.1,D,0.2,e.ang); q=at(0,D-0.04); glass.box(q.x,q.y,f.z+0.2+0.55,L+0.1,0.08,1.1,e.ang); } }
       if(z.strat==='doubleskin'&&D>0.2&&L>=0.8){ const q=at(0,D); glass.box(q.x,q.y,f.z+hh/2,L+0.1,0.06,hh-0.1,e.ang); }
       if(st.screen&&f.terrace>30&&T){ const p=at(0,-1.2); const ix=Math.floor(p.x-T.minx), iy=Math.floor(p.y-T.miny); if(ix>=0&&iy>=0&&ix<T.nx&&iy<T.ny&&T.top[iy*T.nx+ix]===f.i){ const q=at(0,-0.1); glass.box(q.x,q.y,f.z+f.h+0.75,L,0.06,1.5,e.ang); } }
@@ -472,7 +475,7 @@ function solarStudy(r){
   const map=[]; for(let i=0;i<nF;i++){ const m={}; for(const o of ORI){ const zone=zoneFor(o,i+1), Z=zi(zone); m[o]=Z; const A=r.floorFace[i][o]; if(A>0){ Z.floors.add(i); Z.areaGl+=A*zone.wwr; Z.areaOp+=A*(1-zone.wwr); Z.pvArea+=A*(1-zone.wwr)*zone.pv; } } map.push(m); }
   const byFace={}; for(const o of ORI) byFace[o]={un:0,sh:0};
   for(const d of r.dayData){ const wY=dayScope?1:d.yearDays*d.sf;
-    for(const h of d.hourly){ const glared=new Set(); for(const o of ORI){ const col=h.Az[o]; for(let i=0;i<nF;i++){ const a=col[i]; if(a<=0) continue; const Z=map[i][o], zone=Z.z; const beam=a*h.I/1000; const gh=Math.max(0.3,(r.floorH[i]-GAP)*zone.wwr); const t=stratT(zone,h.alt,h.az,FACE_AZ[o],gh); const g=beam*zone.wwr*zone.shgc*0.9;
+    for(const h of d.hourly){ const glared=new Set(); for(const o of ORI){ const col=h.Az[o]; for(let i=0;i<nF;i++){ const a=col[i]; if(a<=0) continue; const Z=map[i][o], zone=Z.z; const beam=a*h.I/1000; const fl=LAB.floors&&LAB.floors[i]; const gh=fl?band(fl,o,zone).gh:Math.max(0.3,(r.floorH[i]-GAP)*zone.wwr); const t=stratT(zone,h.alt,h.az,FACE_AZ[o],gh); const g=beam*zone.wwr*zone.shgc*0.9;
         Z.beam+=beam*wY; Z.un+=g*wY; Z.sh+=g*t*wY; Z.t+=t*beam; Z.n+=beam; byFace[o].un+=g*wY; byFace[o].sh+=g*t*wY; Z.pvBeam+=beam*(1-zone.wwr)*zone.pv*wY;
         if(h.alt<25*Math.PI/180&&t>0.5&&r.floorFace[i][o]>0&&a>0.03*r.floorFace[i][o]) glared.add(Z); } }
       for(const Z of glared) Z.glare+=wY; } }
@@ -737,7 +740,7 @@ function syncUI(){
 function updateGeomInfo(){ const R=LAB.uploadRaw; const el=$('geom-info'); $('lod-block').hidden=!R;
   if(!R){ el.innerHTML=''; return; } const gi=$('up-grade'); if(gi&&document.activeElement!==gi&&LAB.groundZ) gi.value=LAB.groundZ().toFixed(1);
   el.innerHTML=`<p class="blurb" style="margin-top:0"><b>${R.name}</b>: ${R.massing.length} massing object${R.massing.length>1?'s':''}, ${R.shading.length} shading, ${R.pv.length} PV${R.pv.length?' ('+fmtI(meshArea(R.pv))+' m²)':''}. ${useRaw()?(adv()?'Shown and studied as modeled with every layer, so fins, overhangs, balconies and voids in the file shade the façades; zone devices are added on top.':'Shown and studied as the massing layer alone; switch to Design development to bring in the shading and PV layers.'):'Shown and studied as the sliced massing; turn the modeled geometry on to use the file itself.'}</p><p class="blurb"><b>Floors:</b> ${LAB.uploadSummary?LAB.uploadSummary():''} · ${LAB.floors?LAB.floors.length:0} floors in the study.</p>`;
-  $('reslice').hidden=!adv(); if(LAB.help) LAB.help.apply(el); if(LAB.modelParts){ const P=LAB.modelParts; el.insertAdjacentHTML('beforeend',`<p class="blurb"><b>Parts confirmed:</b> ${['floor','core','window','facade','structure','stair','ceiling','roof'].filter(k=>P.counts[k]&&P.confirmed[k]).map(k=>P.counts[k]+' '+({floor:'floor plates',core:'core',window:'windows',facade:'façade',structure:'structure',stair:'stairs',ceiling:'ceilings',roof:'roof'})[k]).join(', ')||'none'}${P.wwr?' · window-to-wall '+['N','E','S','W'].map(k=>k+' '+(P.wwr[k]==null?'–':Math.round(P.wwr[k]*100)+'%')).join(' '):''}${P.ceilingH?' · floor-to-ceiling '+P.ceilingH.toFixed(2)+' m':''}</p>`); }
+  $('reslice').hidden=!adv(); if(LAB.help) LAB.help.apply(el); if(LAB.modelParts){ const P=LAB.modelParts; el.insertAdjacentHTML('beforeend',`<p class="blurb"><b>Parts confirmed:</b> ${['floor','core','window','facade','structure','stair','ceiling','roof'].filter(k=>P.counts[k]&&P.confirmed[k]).map(k=>P.counts[k]+' '+({floor:'floor plates',core:'core',window:'windows',facade:'façade',structure:'structure',stair:'stairs',ceiling:'ceilings',roof:'roof'})[k]).join(', ')||'none'}${P.wwr?' · window-to-wall '+['N','E','S','W'].map(k=>k+' '+(P.wwr[k]==null?'–':Math.round(P.wwr[k]*100)+'%')).join(' '):''}${P.ceilingH?' · floor-to-ceiling '+P.ceilingH.toFixed(2)+' m':''}${P.openings&&P.openings.head!=null?` · windows from ${P.openings.sill.toFixed(2)} to ${P.openings.head.toFixed(2)} m above the floor on ${P.openings.levels} levels; the façade zones and their shading hang from these heads`:''}</p>`); }
 }
 /* one study as a promise: the sun render (plus daylight and ASE in Advanced) or the wind flow (plus ventilation in Advanced) */
 function progressTo(kind,msg){ $('run-'+kind).textContent=msg; $('run-all-status').textContent=msg; $(kind==='sun'?'run-daylight-status':kind==='wind'?'run-vent-status':'run-rain-status').textContent=msg; $('run-active').textContent=msg; $('run-active').disabled=true; }
@@ -1001,7 +1004,7 @@ function planStudy(f){
     let head=0; while(head<q.length){ const ix=q[head++], iy=q[head++]; const d=near[iy*m.nx+ix]; if(d>=30) continue; for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){ const jx=ix+dx,jy=iy+dy; if(!solid(jx,jy)) continue; const x=m.x0+jx+0.5,y=m.y0+jy+0.5; if(inCore(x,y)) continue; const k=jy*m.nx+jx; if(near[k]<0){ near[k]=d+1; q.push(jx,jy); } } } }
   const limSingle=Math.round(2.5*hh), limStack=12, limCross=Math.round(5*hh);
   for(let iy=0;iy<m.ny;iy++) for(let ix=0;ix<m.nx;ix++){ if(!solid(ix,iy)) continue; const x=m.x0+ix+0.5, y=m.y0+iy+0.5; if(inCore(x,y)) continue; area++; const nd=near[iy*m.nx+ix]; if(nd>0&&nd<=8) aWithin8++;
-    if(sunUp){ const ex=walk(ix,iy,sl.x,sl.y); if(ex){ const z=zoneOf(ex.o); const sp=(1-z.wwr)*hh, gh=hh-sp; const hz=ex.D*Math.tan(p.alt); if(hz>=sp&&hz<=sp+gh){ aLitNo++; litNo.push(ix,iy); const pr=stratParts(z,p.alt,azDeg,FACE_AZ[ex.o],gh); if(hz<=sp+gh*(1-pr.cut)&&pr.dim>0.02){ aLit++; lit.push(ix,iy,pr.dim); if(ex.D>maxDepth) maxDepth=ex.D; } } } }
+    if(sunUp){ const ex=walk(ix,iy,sl.x,sl.y); if(ex){ const z=zoneOf(ex.o); const B=band(f,ex.o,z), sp=B.sp, gh=B.gh; const hz=ex.D*Math.tan(p.alt); if(hz>=sp&&hz<=sp+gh){ aLitNo++; litNo.push(ix,iy); const pr=stratParts(z,p.alt,azDeg,FACE_AZ[ex.o],gh); if(hz<=sp+gh*(1-pr.cut)&&pr.dim>0.02){ aLit++; lit.push(ix,iy,pr.dim); if(ex.D>maxDepth) maxDepth=ex.D; } } } }
     if(windowsOpen){ if(mode==='cross'){ const back=walk(ix,iy,-fl.x,-fl.y), fwd=walk(ix,iy,fl.x,fl.y); if(back&&fwd&&back.D<=limCross){ const zi=zoneOf(back.o), zo=zoneOf(fwd.o); if(zi.operable&&zo.operable&&cpOf(back.o)>cpOf(fwd.o)){ aVent++; vent.push(ix,iy); cpIn=cpOf(back.o); cpOut=cpOf(fwd.o); } } }
       else if(nd>0&&nd<=(mode==='stack'?limStack:limSingle)){ aVent++; vent.push(ix,iy); } } }
   let ghMean=0, gN=0; for(const o of ORI){ const z=zoneOf(o); if(!z.operable||!edgeLen[o]) continue; const gh=hh*z.wwr; ghMean+=gh; gN++; const A=edgeLen[o]*gh*open; const cp=cpOf(o); if(cp>0) opIn+=A; else opOut+=A; }
@@ -1021,7 +1024,7 @@ function daylightFloor(f,step){
   const df=new Float32Array(m.nx*m.ny); let sum=0, n=0, lit=0, over=0; const target=(SW.dl&&SW.dl.target||300)/DL_E;
   for(let iy=0;iy<m.ny;iy+=step) for(let ix=0;ix<m.nx;ix+=step){ if(!solid(ix,iy)) continue; const x0=m.x0+ix+0.5, y0=m.y0+iy+0.5; if(inCore(x0,y0)) continue; let sc=0;
     for(const [dx,dy] of dirs){ let x=x0,y=y0,px=ix,py=iy,hit=null; for(let k=1;k<160;k++){ x+=dx*0.5; y+=dy*0.5; if(inCore(x,y)) break; const cx=Math.floor(x-m.x0), cy=Math.floor(y-m.y0); if(!solid(cx,cy)){ let nx=cx!==px?Math.sign(cx-px):0, ny=cy!==py?Math.sign(cy-py):0; if((nx&&ny)||(!nx&&!ny)){ if(Math.abs(dx)>=Math.abs(dy)){ nx=Math.sign(dx); ny=0; } else { ny=Math.sign(dy); nx=0; } } hit={D:k*0.5,o:cardinalOf(nx,ny,f.rot)}; break; } px=cx; py=cy; }
-      if(!hit) continue; const z=zoneFor(hit.o,lvl); const sp=(1-z.wwr)*hh, H=hh; const d=Math.max(0.5,hit.D); const F=dfFactor(z); const sill=Math.max(0,sp-0.8), head=Math.max(sill+0.1,H-0.8);
+      if(!hit) continue; const z=zoneFor(hit.o,lvl); const B=band(f,hit.o,z), sp=B.sp, H=B.head; const d=Math.max(0.5,hit.D); const F=dfFactor(z); const sill=Math.max(0,sp-0.8), head=Math.max(sill+0.1,H-0.8);
       const a1=Math.max(Math.atan(sill/d),obs[hit.o]), a2=Math.atan(head/(d+F.top)); if(a2<=a1) continue; let v=(Math.sin(a2)**2-Math.sin(a1)**2)/8*tau*F.k; if(F.shelf) v*=d<4?0.9:1.15; sc+=v; }
     const v=sc*1.25; df[iy*m.nx+ix]=v; sum+=v; n++; if(v>=target) lit++; if(v>0.05) over++; }
   return {df,step,mean:n?sum/n:0,pctLit:n?lit/n:0,pctOver:n?over/n:0,cells:n,target};
@@ -1034,7 +1037,7 @@ function aseFloor(f,coarse){
   const step=coarse?2:1; const hrs=new Float32Array(m.nx*m.ny); let n=0, over=0;
   for(let iy=0;iy<m.ny;iy+=step) for(let ix=0;ix<m.nx;ix+=step){ if(!solid(ix,iy)) continue; const x0=m.x0+ix+0.5, y0=m.y0+iy+0.5; if(inCore(x0,y0)) continue; n++; let H=0;
     for(const su of suns){ let x=x0,y=y0,px=ix,py=iy,hit=null; for(let k=1;k<200;k++){ x+=su.dx*0.5; y+=su.dy*0.5; if(inCore(x,y)) break; const cx=Math.floor(x-m.x0), cy=Math.floor(y-m.y0); if(!solid(cx,cy)){ let nx=cx!==px?Math.sign(cx-px):0, ny=cy!==py?Math.sign(cy-py):0; if((nx&&ny)||(!nx&&!ny)){ if(Math.abs(su.dx)>=Math.abs(su.dy)){ nx=Math.sign(su.dx); ny=0; } else { ny=Math.sign(su.dy); nx=0; } } hit={D:k*0.5,o:cardinalOf(nx,ny,f.rot)}; break; } px=cx; py=cy; }
-      if(!hit) continue; const z=zoneFor(hit.o,lvl); const sp=(1-z.wwr)*hh, gh=hh-sp; const hz=hit.D*Math.tan(su.alt); if(hz<sp||hz>sp+gh) continue; const pr=stratParts(z,su.alt,su.az,FACE_AZ[hit.o],gh); if(hz>sp+gh*(1-pr.cut)) continue; if(su.E*tau*pr.dim>=1000) H+=su.w; }
+      if(!hit) continue; const z=zoneFor(hit.o,lvl); const B=band(f,hit.o,z), sp=B.sp, gh=B.gh; const hz=hit.D*Math.tan(su.alt); if(hz<sp||hz>sp+gh) continue; const pr=stratParts(z,su.alt,su.az,FACE_AZ[hit.o],gh); if(hz>sp+gh*(1-pr.cut)) continue; if(su.E*tau*pr.dim>=1000) H+=su.w; }
     hrs[iy*m.nx+ix]=H; if(H>=250) over++; }
   return {hrs,step,pctOver:n?over/n:0,cells:n,positions:suns.length,period:PI};
 }
@@ -1233,7 +1236,7 @@ window.addEventListener('keydown',e=>{ if(!massSel) return; const t=e.target; if
 LAB.hooks.afterUpdate.push(()=>{ if(massSel) refreshMassSel(); });
 LAB.sim={init(){ initState(); buildUI(); placeControls(); syncGeometry(); updateGeomInfo(); renderSky(); applySunView(); if(LAB.S.impact.mode!=='sun'&&LAB.S.impact.mode!=='wind') setMode('sun'); else runCurrent(false); rerender();
     setTimeout(()=>autoRun(0),900); },
-  showParts, showExploded, framePreview, applyModelWWR, sunPos, runCurrent, runSunStudy, runWindStudy, setMode, setStudioMode, reportData, periodInfo, roseFor, DATES, STRATS, solarStudy, ventStudy, terraceWind, windProfile, zoneFor, zoneGlazing, energyChanged, exposurePass, setOverlay, dni, terrainDEM, towerRaster, plazaCellsAt, buildSiteRaster:()=>{ if(!siteRaster) buildSiteRaster(); return siteRaster; }, DOM,
+  showParts, showExploded, framePreview, applyModelWWR, sunPos, runCurrent, runSunStudy, runWindStudy, setMode, setStudioMode, reportData, periodInfo, roseFor, DATES, STRATS, solarStudy, band, ventStudy, terraceWind, windProfile, zoneFor, zoneGlazing, energyChanged, exposurePass, setOverlay, dni, terrainDEM, towerRaster, plazaCellsAt, buildSiteRaster:()=>{ if(!siteRaster) buildSiteRaster(); return siteRaster; }, DOM,
   markStale(kind){ stale[kind]=true; showStale(); }, rerenderRain:renderRain, afterImport(){ if(!SW) return; updateGeomInfo(); if(adv()) setTimeout(maybeSliceDialog,0); },
   get windResult(){return windResult;}, get sunResult(){return sunResult;}, get SW(){return SW;}};
 })();

@@ -146,16 +146,45 @@ function render(){ const S=state; const card=$('parts-dialog'); if(!card) return
 function highlight(){ paint(); }
 function close(){ const c=$('parts-dialog'); if(c) c.hidden=true; disposeViewer(); if(state){ state.framed=false; } }
 /* ---------- apply the confirmed parts ---------- */
+/* the ground floor goes onto the site: its level becomes the site ground (z = 0, or the terrain at the tower), and unless the file was
+   drawn in the site's own coordinates, the plate turns so its edges run parallel to the parcel and, if it lands off the parcel, moves onto it */
+function rectAngle(pts){ const P=pts.slice().sort((a,b)=>a[0]-b[0]||a[1]-b[1]); if(P.length<3) return 0; const cr=(o,a,b)=>(a[0]-o[0])*(b[1]-o[1])-(a[1]-o[1])*(b[0]-o[0]); const lo=[],up=[]; for(const p of P){ while(lo.length>=2&&cr(lo[lo.length-2],lo[lo.length-1],p)<=0) lo.pop(); lo.push(p); } for(let i=P.length-1;i>=0;i--){ const p=P[i]; while(up.length>=2&&cr(up[up.length-2],up[up.length-1],p)<=0) up.pop(); up.push(p); } const H=lo.slice(0,-1).concat(up.slice(0,-1));
+  let best=0, bA=Infinity; for(let i=0;i<H.length;i++){ const a=H[i], b=H[(i+1)%H.length]; const th=Math.atan2(b[1]-a[1],b[0]-a[0]); const c=Math.cos(th), s=Math.sin(th); let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9; for(const p of H){ const u=p[0]*c+p[1]*s, v=-p[0]*s+p[1]*c; if(u<x0)x0=u; if(u>x1)x1=u; if(v<y0)y0=v; if(v>y1)y1=v; } const A=(x1-x0)*(y1-y0); if(A<bA-1e-6){ bA=A; best=th; } }
+  return ((best*180/Math.PI)%90+90)%90; }
+function placeOnSite(S,U){ const R=LAB.uploadRaw; const site=LAB.site&&LAB.site.site; const St=LAB.S; if(!site||!site.polygon||!site.polygon.length) return null; if(R&&R.inBase) return {kept:true};
+  let ids=groundIds(S); if(!ids.length) ids=S.by.mass.length?S.by.mass:S.pieces.map((p,i)=>i); const pts=[]; let sx=0,sy=0;
+  for(const i of ids){ const p=S.pieces[i]; for(let k=0;k<p.f.length;k++){ const q=p.f[k]*3; const x=p.v[q]-U.cx, y=p.v[q+1]-U.cy; pts.push([x,y]); sx+=x; sy+=y; } } if(!pts.length) return null;
+  const pc=[sx/pts.length,sy/pts.length]; const aPlate=rectAngle(pts), aSite=rectAngle(site.polygon); let d=aSite-aPlate; d=((d+45)%90+90)%90-45; const P=LAB.PARAMS||{};
+  const clamp=(v,k)=>P[k]?Math.max(P[k].min,Math.min(P[k].max,v)):v; St.rotDeg=clamp(Math.round(d*10)/10,'rotDeg');
+  const r=St.rotDeg*Math.PI/180, c=Math.cos(r), s=Math.sin(r); const wx=St.posX+pc[0]*c-pc[1]*s, wy=St.posY+pc[0]*s+pc[1]*c; let moved=false;
+  if(!LAB.pointInPoly(wx,wy,site.polygon)){ let gx=0,gy=0; for(const q of site.polygon){ gx+=q[0]; gy+=q[1]; } gx/=site.polygon.length; gy/=site.polygon.length; St.posX=clamp(Math.round(gx-(pc[0]*c-pc[1]*s)),'posX'); St.posY=clamp(Math.round(gy-(pc[0]*s+pc[1]*c)),'posY'); moved=true; }
+  return {rot:St.rotDeg,moved}; }
+
+/* window sill and head per level and face, and the ceiling height per level, read from the confirmed windows and ceilings;
+   heights are metres above that level's plate, so the façade zones and their devices follow the modeled openings */
+function openingsToLevels(U,S,winIds,ceilIds){ if(!U.levels) return; const L=U.levels, top=U.top; const span=li=>[L[li],li+1<L.length?L[li+1]:top];
+  const open=L.map(()=>({})), ceil=L.map(()=>null);
+  // every vertical glass triangle counts on the face it looks out of, so glass joined round a corner still splits by face
+  const cx=S.ctx.cx, cy=S.ctx.cy;
+  for(const i of winIds){ const p=S.pieces[i], v=p.v; for(let t=0;t<p.f.length;t+=3){ const a=p.f[t]*3,b=p.f[t+1]*3,c=p.f[t+2]*3; const ux=v[b]-v[a],uy=v[b+1]-v[a+1],uz=v[b+2]-v[a+2],wx=v[c]-v[a],wy=v[c+1]-v[a+1],wz=v[c+2]-v[a+2]; const nx=uy*wz-uz*wy, ny=uz*wx-ux*wz, nz=ux*wy-uy*wx; const len=Math.hypot(nx,ny,nz); if(len<0.3||Math.abs(nz/len)>0.2) continue;
+      const mx=(v[a]+v[b]+v[c])/3-cx, my=(v[a+1]+v[b+1]+v[c+1])/3-cy; const sg=(nx*mx+ny*my)<0?-1:1; const az=(Math.atan2(sg*nx,sg*ny)*180/Math.PI+360)%360; const o=az<45||az>=315?'N':(az<135?'E':(az<225?'S':'W'));
+      const z0=Math.min(v[a+2],v[b+2],v[c+2])-U.minz, z1=Math.max(v[a+2],v[b+2],v[c+2])-U.minz;
+      for(let li=0;li<L.length;li++){ const [lo0,hi0]=span(li); const lo=Math.max(z0,lo0), hi=Math.min(z1,hi0); if(hi-lo<0.3) continue; const r=open[li][o]||(open[li][o]=[1e9,-1e9]); r[0]=Math.min(r[0],lo-lo0); r[1]=Math.max(r[1],hi-lo0); } } }
+  for(const i of ceilIds){ const z=S.info[i].z0-U.minz; for(let li=0;li<L.length;li++){ const [a,b]=span(li); if(z>a+1.8&&z<b+0.05){ ceil[li]=ceil[li]==null?z-a:Math.min(ceil[li],z-a); break; } } }
+  U.openings=open; U.ceilings=ceil;
+  const heads=[], sills=[]; open.forEach(r=>{ for(const k in r){ sills.push(r[k][0]); heads.push(r[k][1]); } }); const med=a=>{ a.sort((x,y)=>x-y); return a.length?a[Math.floor(a.length/2)]:null; };
+  return {sill:med(sills),head:med(heads),levels:open.filter(r=>Object.keys(r).length).length}; }
+
 function apply(){ const S=state; const ok=k=>S.confirmed[k]!==false&&S.by[k]&&S.by[k].length>0; const io=LAB.io; const U0=LAB.upload; if(!U0){ close(); return; }
   const keepOut=new Set(['structure','stair','other']); if(ok('window')) keepOut.add('window'); if(ok('facade')) keepOut.add('facade'); if(ok('ceiling')) keepOut.add('ceiling');
   const solids=S.pieces.filter((p,i)=>!keepOut.has(S.cat[i])); const plates=ok('floor')?S.by.floor.concat(ok('roof')?S.by.roof:[]).map(i=>S.pieces[i]):null;
   let U; try{ U=io.voxelize(solids.length?solids:S.pieces,S.all,plates); }catch(e){ U=io.voxelize(S.pieces,S.all,plates); }
-  if(plates&&plates.length){ U.srcMeshes=plates; Object.assign(U,io.detectLevels(plates,U.minz,U.top,U.footprint,U)); if(U.levels){ U.useLevels=true; U.fromParts=true; io.platesToLevels(U,plates); } }
-  U.grade=Math.max(0,Math.min(U.top-2.4,S.groundZ-U.minz)); LAB.upload=U; const St=LAB.S; St.height=Math.round(U.top-U.grade);
+  if(plates&&plates.length){ U.srcMeshes=plates; Object.assign(U,io.detectLevels(plates,U.minz,U.top,U.footprint,U)); if(U.levels){ U.useLevels=true; U.fromParts=true; io.platesToLevels(U,plates); S.openInfo=openingsToLevels(U,S,ok('window')?S.by.window:[],ok('ceiling')?S.by.ceiling:[]); } }
+  U.grade=Math.max(0,Math.min(U.top-2.4,S.groundZ-U.minz)); LAB.upload=U; const St=LAB.S; St.height=Math.round(U.top-U.grade); const placed=S.confirmed.ground!==false?placeOnSite(S,U):null;
   if(ok('core')&&S.coreFrac) St.coreFrac=+S.coreFrac.toFixed(3);
-  LAB.modelParts={name:S.name,counts:Object.fromEntries(CATS.map(c=>[c[0],S.by[c[0]].length])),confirmed:Object.fromEntries(Object.keys(S.by).map(k=>[k,ok(k)])),wwr:ok('window')?S.wwr:null,coreFrac:ok('core')?S.coreFrac:null,ceilingH:ok('ceiling')?S.ceilingH:null,groundZ:S.groundZ,levels:S.levels.length,typical:S.typical};
+  LAB.modelParts={name:S.name,counts:Object.fromEntries(CATS.map(c=>[c[0],S.by[c[0]].length])),confirmed:Object.fromEntries(Object.keys(S.by).map(k=>[k,ok(k)])),wwr:ok('window')?S.wwr:null,coreFrac:ok('core')?S.coreFrac:null,ceilingH:ok('ceiling')?S.ceilingH:null,openings:S.openInfo||null,groundZ:S.groundZ,levels:S.levels.length,typical:S.typical};
   if(LAB.modelParts.wwr&&LAB.sim&&LAB.sim.applyModelWWR) LAB.sim.applyModelWWR(LAB.modelParts.wwr);
-  close(); LAB.update(); if(io.status) io.status(`Model parts confirmed: ${['floor','core','window','facade','structure','stair'].filter(k=>S.by[k].length).map(k=>S.by[k].length+' '+NAME[k].toLowerCase()).join(', ')}; ground at model z ${S.groundZ} m, ${LAB.floors?LAB.floors.length:0} floors above it.`);
+  close(); LAB.update(); if(io.status) io.status(`Model parts confirmed: ${['floor','core','window','facade','structure','stair'].filter(k=>S.by[k].length).map(k=>S.by[k].length+' '+NAME[k].toLowerCase()).join(', ')}; ground at model z ${S.groundZ} m set on the site ground, ${LAB.floors?LAB.floors.length:0} floors above it${placed&&placed.kept?'; kept where the file places it on the site':(placed?`; turned ${placed.rot}° to run parallel to the parcel${placed.moved?' and moved onto it':''}`:'')}.`);
   if(LAB.sim&&LAB.sim.afterImport) LAB.sim.afterImport(); }
 /* ---------- entry ---------- */
 function open(massing,name){ if(!massing||!massing.length) return; const pieces=LAB.io.splitPieces(massing); let bx0=1e9,bx1=-1e9,by0=1e9,by1=-1e9; for(const m of massing) for(let i=0;i<m.v.length;i+=3){ const x=m.v[i],y=m.v[i+1]; if(x<bx0)bx0=x; if(x>bx1)bx1=x; if(y<by0)by0=y; if(y>by1)by1=y; } const C={cx:(bx0+bx1)/2,cy:(by0+by1)/2}; const inf=pieces.map(p=>info(p,C));
