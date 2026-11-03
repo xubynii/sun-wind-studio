@@ -269,11 +269,13 @@ h2 .help{order:0}
           <div class="sel-row" style="margin-top:8px"><label class="lvl">Floor-to-floor <input type="number" id="slice-f2f" min="2.4" max="9" step="0.1" aria-label="Floor-to-floor height in metres"> m</label></div>
           <div class="actions"><button class="btn primary" id="slice-apply" type="button">Slice the mass into floors</button><button class="btn" id="slice-keep" type="button">Use the floor plates in the file</button></div>
         </div>
-        <h2>Level of detail</h2>
+        <div id="lod-block" hidden>
+        <h2>Uploaded model</h2>
         <div id="geom-info"></div>
         <div class="checks one"><label class="check" for="c-raw"><input type="checkbox" id="c-raw" checked><span>Show and study the uploaded geometry as modeled rather than the sliced massing</span></label></div>
         <div class="actions"><button class="btn small adv" id="reslice" type="button">Change how the upload is sliced</button></div>
         <div class="legend"><span><i style="background:var(--mass)"></i>Massing</span><span><i style="background:var(--spandrel)"></i>Floor plates and spandrels</span><span><i style="background:var(--glass)"></i>Glazing</span><span><i style="background:var(--shade-dev)"></i>Shading devices</span><span><i style="background:var(--pv)"></i>PV</span><span><i style="background:var(--green)"></i>Green wall</span></div>
+        </div>
         <h2>Or generate a test massing</h2>
         <div class="typos" id="typos"></div>
         <p class="blurb" id="blurb"></p>
