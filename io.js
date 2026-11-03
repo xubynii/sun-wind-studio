@@ -103,29 +103,45 @@ function voxelize(meshes){
   let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9,minz=1e9,maxz=-1e9;
   for(const m of meshes) for(let i=0;i<m.v.length;i+=3){ minx=Math.min(minx,m.v[i]); maxx=Math.max(maxx,m.v[i]); miny=Math.min(miny,m.v[i+1]); maxy=Math.max(maxy,m.v[i+1]); minz=Math.min(minz,m.v[i+2]); maxz=Math.max(maxz,m.v[i+2]); }
   const cx=(minx+maxx)/2, cy=(miny+maxy)/2, nx=Math.ceil(maxx-minx)+2, ny=Math.ceil(maxy-miny)+2, x0=-nx/2, y0=-ny/2;
-  const cols=new Array(nx*ny); for(let k=0;k<nx*ny;k++) cols[k]=[];
-  for(const m of meshes) for(let i=0;i<m.f.length;i+=3){ const a=m.f[i]*3,b=m.f[i+1]*3,c=m.f[i+2]*3;
-    const ax=m.v[a]-cx,ay=m.v[a+1]-cy,az=m.v[a+2]-minz,bx=m.v[b]-cx,by=m.v[b+1]-cy,bz=m.v[b+2]-minz,qx=m.v[c]-cx,qy=m.v[c+1]-cy,qz=m.v[c+2]-minz;
-    const det=(bx-ax)*(qy-ay)-(qx-ax)*(by-ay); if(Math.abs(det)<1e-7) continue;
-    const ix0=Math.max(0,Math.floor(Math.min(ax,bx,qx)-x0)), ix1=Math.min(nx-1,Math.floor(Math.max(ax,bx,qx)-x0)), iy0=Math.max(0,Math.floor(Math.min(ay,by,qy)-y0)), iy1=Math.min(ny-1,Math.floor(Math.max(ay,by,qy)-y0));
-    for(let iy=iy0;iy<=iy1;iy++){ const py=y0+iy+0.5; for(let ix=ix0;ix<=ix1;ix++){ const px=x0+ix+0.5;
-      const l1=((bx-px)*(qy-py)-(qx-px)*(by-py))/det, l2=((qx-px)*(ay-py)-(ax-px)*(qy-py))/det, l3=1-l1-l2;
-      if(l1>=-1e-6&&l2>=-1e-6&&l3>=-1e-6) cols[iy*nx+ix].push(l1*az+l2*bz+l3*qz); } } }
+  /* solid intervals per object from face orientation: going up a cell's column, a face pointing down is an entry and a face pointing up an exit.
+     An exit with no entry (an open floor plate, a canopy, a mesh with a gap) is ignored, so it cannot flip everything stacked with it;
+     stacked storeys that share a face simply close one interval and open the next. Objects with inward normals are flipped. */
+  const merged=new Array(nx*ny); for(let k=0;k<nx*ny;k++) merged[k]=[]; let openHits=0; const singles=new Map();
+  // connected pieces of each object, vertices welded at 1 mm: a loose plate or canopy inside the same object is its own piece
+  const pieces=[]; for(const m0 of meshes){ const key=new Map(), par=[]; const find=x=>{ while(par[x]!==x){ par[x]=par[par[x]]; x=par[x]; } return x; };
+    const vid=i=>{ const k=Math.round(m0.v[i*3]*1000)+','+Math.round(m0.v[i*3+1]*1000)+','+Math.round(m0.v[i*3+2]*1000); let id=key.get(k); if(id==null){ id=par.length; par.push(id); key.set(k,id); } return id; };
+    const tv=[]; for(let i=0;i<m0.f.length;i+=3){ const a=vid(m0.f[i]),b=vid(m0.f[i+1]),c=vid(m0.f[i+2]); tv.push(a,b,c); const ra=find(a),rb=find(b),rc=find(c); par[rb]=ra; par[find(c)]=ra; }
+    const groups=new Map(); for(let t=0;t<tv.length;t+=3){ const r=find(tv[t]); let g=groups.get(r); if(!g){ g=[]; groups.set(r,g); } g.push(m0.f[t],m0.f[t+1],m0.f[t+2]); }
+    for(const f of groups.values()) pieces.push({v:m0.v,f}); }
+  for(const m of pieces){ const hits=new Map(); let vol=0;
+    for(let i=0;i<m.f.length;i+=3){ const a=m.f[i]*3,b=m.f[i+1]*3,c=m.f[i+2]*3; vol+=m.v[a]*(m.v[b+1]*m.v[c+2]-m.v[b+2]*m.v[c+1])-m.v[a+1]*(m.v[b]*m.v[c+2]-m.v[b+2]*m.v[c])+m.v[a+2]*(m.v[b]*m.v[c+1]-m.v[b+1]*m.v[c]); }
+    const flip=vol<0?-1:1;
+    for(let i=0;i<m.f.length;i+=3){ const a=m.f[i]*3,b=m.f[i+1]*3,c=m.f[i+2]*3;
+      const ax=m.v[a]-cx,ay=m.v[a+1]-cy,az=m.v[a+2]-minz,bx=m.v[b]-cx,by=m.v[b+1]-cy,bz=m.v[b+2]-minz,qx=m.v[c]-cx,qy=m.v[c+1]-cy,qz=m.v[c+2]-minz;
+      const det=(bx-ax)*(qy-ay)-(qx-ax)*(by-ay); if(Math.abs(det)<1e-7) continue; const sg=(det>0?1:-1)*flip; // +1 faces up (exit), −1 faces down (entry)
+      const ix0=Math.max(0,Math.floor(Math.min(ax,bx,qx)-x0)), ix1=Math.min(nx-1,Math.floor(Math.max(ax,bx,qx)-x0)), iy0=Math.max(0,Math.floor(Math.min(ay,by,qy)-y0)), iy1=Math.min(ny-1,Math.floor(Math.max(ay,by,qy)-y0));
+      for(let iy=iy0;iy<=iy1;iy++){ const py=y0+iy+0.5; for(let ix=ix0;ix<=ix1;ix++){ const px=x0+ix+0.5;
+        const l1=((bx-px)*(qy-py)-(qx-px)*(by-py))/det, l2=((qx-px)*(ay-py)-(ax-px)*(qy-py))/det, l3=1-l1-l2;
+        if(l1>=-1e-6&&l2>=-1e-6&&l3>=-1e-6){ const k=iy*nx+ix; let h=hits.get(k); if(!h){ h=[]; hits.set(k,h); } h.push([l1*az+l2*bz+l3*qz,sg]); } } } }
+    for(const [k,zs] of hits){ zs.sort((p,q)=>p[0]-q[0]||q[1]-p[1]); const u=[]; for(const h of zs){ const l=u[u.length-1]; if(l&&l[1]===h[1]&&h[0]-l[0]<0.02) continue; u.push(h); } // the same face hit twice on a triangle edge counts once
+      let depth=0, start=0, closed=0; for(const [z,sg] of u){ if(sg<0){ if(depth===0) start=z; depth++; } else if(depth>0){ depth--; if(depth===0){ if(z-start>0.15) merged[k].push([start,z]); closed++; } } else openHits++; }
+      if(!closed&&u.length===1) singles.set(k,Math.max(singles.get(k)||0,u[0][0])); } }
   const ints=new Array(nx*ny); let any=0;
-  for(let k=0;k<nx*ny;k++){ const zs=cols[k].sort((p,q)=>p-q); const iv=[]; for(let i=0;i+1<zs.length;i+=2){ if(zs[i+1]-zs[i]>0.15) iv.push([zs[i],zs[i+1]]); } if(zs.length===1) iv.push([0,zs[0]]); ints[k]=iv; if(iv.length) any++; }
+  for(let k=0;k<nx*ny;k++){ const iv=merged[k].sort((p,q)=>p[0]-q[0]); const out=[]; for(const p of iv){ const last=out[out.length-1]; if(last&&p[0]<=last[1]+0.2) last[1]=Math.max(last[1],p[1]); else out.push([p[0],p[1]]); } ints[k]=out; if(out.length) any++; }
+  if(!any&&singles.size){ for(const [k,z] of singles){ if(z>0.15){ ints[k]=[[0,z]]; any++; } } } // a model of open shells only: each surface stands on the ground, as before
   if(!any) throw new Error('The model has no closed volumes to slice. Make sure the massing is a closed mesh or polysurface.');
   const U={nx,ny,x0,y0,ints,top:maxz-minz,base:0,footprint:any,cx,cy,minz,srcMeshes:meshes};
-  Object.assign(U,detectLevels(meshes,minz,maxz-minz,any));
+  Object.assign(U,detectLevels(meshes,minz,maxz-minz,any,U));
   return U;
 }
 /* floor plates in a developed model: upward-facing horizontal faces whose area is a good share of the footprint, clustered by height.
    A plain mass has such faces only at its base and roof, so it reports none and is sliced at the floor-to-floor height instead. */
-function detectLevels(meshes,minz,top,footprint){
+function detectLevels(meshes,minz,top,footprint,U){ U=U||LAB.upload; const over=(x,y)=>{ if(!U||!U.ints) return true; const ix=Math.floor(x-U.cx-U.x0), iy=Math.floor(y-U.cy-U.y0); return ix>=0&&iy>=0&&ix<U.nx&&iy<U.ny&&U.ints[iy*U.nx+ix].length>0; }; // plates count only over the tower's own footprint, so a canopy or a neighbouring slab is not a floor
   const bin=0.25, hist=new Map();
   for(const m of meshes) for(let i=0;i<m.f.length;i+=3){ const a=m.f[i]*3,b=m.f[i+1]*3,c=m.f[i+2]*3;
     const ux=m.v[b]-m.v[a],uy=m.v[b+1]-m.v[a+1],uz=m.v[b+2]-m.v[a+2],vx=m.v[c]-m.v[a],vy=m.v[c+1]-m.v[a+1],vz=m.v[c+2]-m.v[a+2];
     const nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx; const len=Math.hypot(nx,ny,nz); if(len<1e-6||nz<0.95*len) continue;
-    const z=(m.v[a+2]+m.v[b+2]+m.v[c+2])/3-minz; const k=Math.round(z/bin); const e=hist.get(k)||[0,0]; e[0]+=len/2; e[1]+=len/2*z; hist.set(k,e); }
+    if(!over((m.v[a]+m.v[b]+m.v[c])/3,(m.v[a+1]+m.v[b+1]+m.v[c+1])/3)) continue; const z=(m.v[a+2]+m.v[b+2]+m.v[c+2])/3-minz; const k=Math.round(z/bin); const e=hist.get(k)||[0,0]; e[0]+=len/2; e[1]+=len/2*z; hist.set(k,e); }
   const keys=[...hist.keys()].sort((p,q)=>p-q); const clusters=[]; let cur=null;
   for(const k of keys){ const [A,ZW]=hist.get(k); if(cur&&k-cur.last<=2){ cur.area+=A; cur.zw+=ZW; cur.last=k; } else { cur={area:A,zw:ZW,last:k}; clusters.push(cur); } }
   const horiz=clusters.length; const levels=clusters.filter(c=>c.area>=0.2*footprint).map(c=>c.zw/c.area).filter(z=>z>=-0.05&&z<top-1.0).sort((p,q)=>p-q);
@@ -138,7 +154,7 @@ function detectLevels(meshes,minz,top,footprint){
   return {levels:merged,plates:interior.length,typical:med,useLevels:true,scan,reason:null,span:[merged[1],merged[merged.length-1]],gaps:[gaps[0],gaps[gaps.length-1]]};
 }
 /* re-run the plate scan on an uploaded model (the Design development slice step asks for it before slicing) */
-LAB.scanLevels=function(U){ U=U||LAB.upload; if(!U||!U.srcMeshes) return null; const keep=U.useLevels; Object.assign(U,detectLevels(U.srcMeshes,U.minz,U.top,U.footprint)); if(U.levels&&keep===false) U.useLevels=false; return U; };
+LAB.scanLevels=function(U){ U=U||LAB.upload; if(!U||!U.srcMeshes) return null; const keep=U.useLevels; Object.assign(U,detectLevels(U.srcMeshes,U.minz,U.top,U.footprint,U)); if(U.levels&&keep===false) U.useLevels=false; return U; };
 /* floors from the upload, split at the ground level: U.grade is the height of the ground above the model's lowest point (model z = 0 by default).
    Floors above it become the tower studied by every tool; floors below it are basements, kept in LAB.belowFloors with negative z. */
 LAB.uploadFloors=function(S){
