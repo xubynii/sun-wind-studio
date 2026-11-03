@@ -1117,13 +1117,24 @@ LAB.hooks.tab.push(name=>{ if(SW) onTab(name); });
 /* ---------- pick the mass in the viewport and nudge it on the site with the arrow keys ---------- */
 let massSel=false, selHelper=null, mDown=null; const vpEl=LAB.renderer.domElement.parentElement;
 function massTargets(){ const t=[]; for(const g of [advGroup,lodGroup,dressGroup,LAB.towerGroup]){ if(!g||!g.visible) continue; g.traverse(o=>{ if(o.isMesh&&o.visible&&!o.userData.deco&&!o.userData.labelPlane) t.push(o); }); } return t; }
-function refreshMassSel(){ if(selHelper){ LAB.scene.remove(selHelper); selHelper.geometry.dispose(); selHelper.material.dispose(); selHelper=null; } const hint=$('mass-hint'); hint.hidden=!massSel; if(!massSel){ LAB.requestRender(); return; }
+function refreshMassSel(){ if(selHelper){ LAB.scene.remove(selHelper); selHelper.geometry.dispose(); selHelper.material.dispose(); selHelper=null; } const hint=$('mass-hint'); hint.hidden=!massSel; if(!massSel){ LAB.requestRender(); return; } hint.innerHTML=hintText(0,0);
   const box=new THREE.Box3(); for(const o of massTargets()) box.expandByObject(o); if(box.isEmpty()){ massSel=false; hint.hidden=true; return; } box.expandByScalar(0.8);
   selHelper=new THREE.Box3Helper(box,new THREE.Color(cssVar('--accent')||'#C8552D')); selHelper.userData.deco=true; selHelper.renderOrder=5; LAB.scene.add(selHelper); LAB.requestRender(); }
-vpEl.addEventListener('pointerdown',e=>{ mDown=e.target.closest('.viewtools,.abar,.hud,.compass')?null:{x:e.clientX,y:e.clientY,b:e.button}; });
+/* press on the mass and drag it across the site; the groups slide visually while dragging and the move is committed on release (1 m grid, Alt for free) */
+const dragPlane=new THREE.Plane(), dragHit=new THREE.Vector3(); let drag=null; const gPick=new THREE.Raycaster();
+function pickRay(e){ const el=LAB.renderer.domElement, r=el.getBoundingClientRect(); gPick.setFromCamera({x:((e.clientX-r.left)/r.width)*2-1,y:-((e.clientY-r.top)/r.height)*2+1},view.ortho?orthoCam:LAB.camera); return gPick; }
+function groundPoint(e){ const ray=pickRay(e); const d=ray.ray.direction; if(Math.abs(d.y)>0.15) dragPlane.set(new THREE.Vector3(0,1,0),0); else { const n=new THREE.Vector3(d.x,0,d.z).normalize(); dragPlane.setFromNormalAndCoplanarPoint(n,new THREE.Vector3(LAB.S.posX,0,-LAB.S.posY)); } return ray.ray.intersectPlane(dragPlane,dragHit)?{x:dragHit.x,y:-dragHit.z}:null; }
+function massAt(e){ return pickRay(e).intersectObjects(massTargets(),false).length>0; }
+function slideGroups(dx,dy){ for(const g of [lodGroup,dressGroup,LAB.towerGroup,LAB.waterGroup,selHelper]){ if(g) g.position.set(dx,0,-dy); } advGroup.position.set(LAB.S.posX+dx,0,-(LAB.S.posY+dy)); LAB.requestRender(); }
+function hintText(dx,dy){ const S=LAB.S; const x=S.posX+(dx||0), y=S.posY+(dy||0); return `<b>Mass selected</b> · ${x>0?'+':''}${x} m E, ${y>0?'+':''}${y} m N · drag to move · arrows nudge 1 m, Shift 5 m · [ ] rotate · Esc`; }
+vpEl.addEventListener('pointerdown',e=>{ mDown=null; if(e.button!==0||e.target.closest('.viewtools,.abar,.hud,.compass,.mass-hint')) return; mDown={x:e.clientX,y:e.clientY,b:e.button};
+  if(massAt(e)){ const g=groundPoint(e); if(g){ e.stopImmediatePropagation(); vpEl.setPointerCapture(e.pointerId); drag={id:e.pointerId,ox:LAB.S.posX-g.x,oy:LAB.S.posY-g.y,dx:0,dy:0,moved:false}; if(!massSel){ massSel=true; refreshMassSel(); } vpEl.style.cursor='grabbing'; } } },true);
+vpEl.addEventListener('pointermove',e=>{ if(drag){ if(e.pointerId!==drag.id) return; const g=groundPoint(e); if(!g) return; const P=LAB.PARAMS, S=LAB.S; const snap=e.altKey?0.1:1; let nx=Math.round((g.x+drag.ox)/snap)*snap, ny=Math.round((g.y+drag.oy)/snap)*snap; nx=Math.max(P.posX.min,Math.min(P.posX.max,nx)); ny=Math.max(P.posY.min,Math.min(P.posY.max,ny)); drag.dx=+(nx-S.posX).toFixed(1); drag.dy=+(ny-S.posY).toFixed(1); drag.moved=drag.moved||Math.hypot(e.clientX-mDown.x,e.clientY-mDown.y)>3; slideGroups(drag.dx,drag.dy); $('mass-hint').innerHTML=hintText(drag.dx,drag.dy); return; }
+  if(e.buttons) return; vpEl.style.cursor=massAt(e)?'grab':''; });
+const endDrag=e=>{ if(!drag||e.pointerId!==drag.id) return; const d=drag; drag=null; vpEl.style.cursor=''; try{ vpEl.releasePointerCapture(e.pointerId); }catch(x){} slideGroups(0,0); if(d.moved&&(d.dx||d.dy)){ LAB.S.posX=+(LAB.S.posX+d.dx).toFixed(1); LAB.S.posY=+(LAB.S.posY+d.dy).toFixed(1); LAB.update(); } $('mass-hint').innerHTML=hintText(0,0); mDown=null; };
+vpEl.addEventListener('pointerup',endDrag,true); vpEl.addEventListener('pointercancel',endDrag,true);
 vpEl.addEventListener('pointerup',e=>{ const d=mDown; mDown=null; if(!d||d.b!==0) return; if(Math.hypot(e.clientX-d.x,e.clientY-d.y)>5) return;
-  const el=LAB.renderer.domElement, r=el.getBoundingClientRect(); const ray=new THREE.Raycaster(); ray.setFromCamera({x:((e.clientX-r.left)/r.width)*2-1,y:-((e.clientY-r.top)/r.height)*2+1},view.ortho?orthoCam:LAB.camera);
-  const hit=ray.intersectObjects(massTargets(),false).length>0; const was=massSel; massSel=hit; if(massSel||was) refreshMassSel(); });
+  const hit=massAt(e); const was=massSel; massSel=hit; if(massSel||was) refreshMassSel(); });
 window.addEventListener('keydown',e=>{ if(!massSel) return; const t=e.target; if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable)) return;
   if(e.key==='Escape'){ massSel=false; refreshMassSel(); return; }
   let dx=0, dy=0, rot=0; if(e.key==='ArrowUp') dy=1; else if(e.key==='ArrowDown') dy=-1; else if(e.key==='ArrowRight') dx=1; else if(e.key==='ArrowLeft') dx=-1; else if(e.key==='['||e.key==='PageDown') rot=-1; else if(e.key===']'||e.key==='PageUp') rot=1; else return;

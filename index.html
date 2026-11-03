@@ -201,7 +201,7 @@ h2 .help{order:0}
 .viewport canvas{display:block;width:100%;height:100%;touch-action:none}
 .hud{position:absolute;left:12px;bottom:66px;font:400 11px/1.4 var(--font-m);color:var(--muted);pointer-events:none;max-width:70%}
 .hud b{color:var(--ink);font-weight:500}
-.mass-hint{position:absolute;left:72px;top:8px;padding:6px 10px;background:var(--panel);border:1px solid var(--accent);border-radius:8px;font:400 11.5px/1.3 var(--font-m);color:var(--ink);pointer-events:none;max-width:60%}
+.mass-hint{position:absolute;left:72px;top:8px;padding:6px 10px;background:var(--panel);border:1px solid var(--accent);border-radius:8px;font:400 11.5px/1.3 var(--font-m);color:var(--ink);pointer-events:none;font-variant-numeric:tabular-nums;max-width:60%}
 .mass-hint b{color:var(--accent);font-weight:600}
 .viewtools{position:absolute;right:12px;top:10px;display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;max-width:70%;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:3px}
 .viewtools button{background:transparent;border:0;border-radius:6px;padding:5px 9px;font:500 11.5px/1.2 var(--font-b);cursor:pointer;color:var(--muted)}
@@ -295,7 +295,18 @@ h2 .help{order:0}
 
       <section class="tab" data-tab="site">
         <h1 class="ptitle">Site</h1>
-        <p class="plead">Competition parcel from <b>Vancouver Tall Base Model.3dm</b>: a 145 × 79 m block between the arterial street, the retail high street and the transit plaza, with heritage buildings, existing towers and three future towers of 186, 244 and 305 m. Upload your own context on the Model tab to replace it.</p>
+        <p class="plead">Competition parcel from <b>Vancouver Tall Base Model.3dm</b>: a 145 × 79 m block between the arterial street, the retail high street and the transit plaza, with heritage buildings, existing towers and three future towers of 186, 244 and 305 m. Upload your own site model below to replace or add to it: buildings, plazas and streets become context, and a terrain layer becomes the ground the rain study drains over.</p>
+        <h2>Site model</h2>
+        <label class="filein" for="site-file-in"><span class="btn primary" aria-hidden="true">Choose a .3dm file</span><input type="file" id="site-file-in" accept=".3dm,.obj,.json"><span class="filename" id="site-file-name">Vancouver Tall Base Model</span></label>
+        <div class="drop" id="site-drop">or drop the site file here · metres, z up · a layer named topo, terrain, contour or grade becomes the ground surface</div>
+        <p class="io-status" id="site-io-status">Context buildings, plazas and terrain; the tower comes from the Model tab.</p>
+        <div id="site-import-dialog" hidden>
+          <h3>Layers found</h3>
+          <div class="tbl-wrap"><table id="site-import-layers"></table></div>
+          <div class="checks one"><label class="check" for="c-site-replace"><input type="checkbox" id="c-site-replace" checked><span>Replace the Vancouver site (untick to add to it)</span></label></div>
+          <div class="actions"><button class="btn primary" id="site-import-apply" type="button">Import</button><button class="btn" id="site-import-cancel" type="button">Cancel</button></div>
+        </div>
+        <h2>Tower on the site</h2>
         <div id="siteparams"></div>
         <div class="checks"><label class="check" for="c-future"><input type="checkbox" id="c-future"><span>Future towers</span></label><label class="check" for="c-labels"><input type="checkbox" id="c-labels"><span>Street labels</span></label></div>
         <div id="labelsize"></div>
@@ -423,7 +434,7 @@ h2 .help{order:0}
         <button type="button" id="view-top" aria-pressed="false">Plan</button>
         <button type="button" id="view-site">Site</button>
       </div>
-      <div class="hud" id="hud">Drag to orbit · scroll to zoom · click the mass to select it</div>
+      <div class="hud" id="hud">Drag to orbit · scroll to zoom · drag the mass to move it</div>
       <div class="mass-hint" id="mass-hint" hidden><b>Mass selected</b> · ← → ↑ ↓ move 1 m · Shift 5 m · [ ] rotate 5° · Esc to deselect</div>
       <div class="abar" id="abar">
         <div class="ov"><button type="button" id="view-sun" aria-pressed="false"><i style="background:var(--sun)"></i>Sun</button><button type="button" id="view-wind" aria-pressed="false"><i style="background:var(--wind)"></i>Wind</button><button type="button" id="view-rain" aria-pressed="false"><i style="background:#2F6FA8"></i>Rain</button></div>

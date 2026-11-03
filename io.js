@@ -55,7 +55,7 @@ async function parse3DM(buf){
 }
 
 /* ---------- import dialog: layers → massing / shading / pv / context / ignore ---------- */
-let pending=null;
+let pending=null; let siteMode=false; const ID=k=>siteMode?({status:'site-io-status',layers:'site-import-layers',dialog:'site-import-dialog',replace:'c-site-replace',name:'site-file-name'})[k]:({status:'io-status',layers:'import-layers',dialog:'import-dialog',replace:'c-import-replace',name:'file-name'})[k];
 function guessRole(name){
   if(/topo|terrain|dem\b|contour|grade|landform|ground surface/i.test(name)) return 'terrain';
   if(/pv|photovolt|solar panel|bipv|collector/i.test(name)) return 'pv';
@@ -63,18 +63,20 @@ function guessRole(name){
   if(/site|context|exist|herit|plaza|road|curb|ground|topo|tree|future|block|surround|neighbo/i.test(name)) return 'context';
   return 'massing';
 }
+const SITE_ROLES=[['context','site context · buildings, plazas, streets'],['terrain','terrain · ground surface'],['ignore','ignore']];
 const ROLES=[['massing','tower massing'],['shading','shading device (Design development)'],['pv','PV surface (Design development)'],['context','site context'],['terrain','terrain · ground surface'],['ignore','ignore']];
 function showImportDialog(meshes,name){
   const groups={}; for(const m of meshes){ const k=m.layerName||'model'; const g=groups[k]||(groups[k]={n:0,kinds:{},top:-1e9}); g.n++; g.kinds[m.kind||'mesh']=(g.kinds[m.kind||'mesh']||0)+1; g.top=Math.max(g.top,m.top); }
   pending={meshes,name,groups};
   const names=Object.keys(groups).sort();
-  $('import-layers').innerHTML=`<thead><tr><th>Layer</th><th class="num">Objects</th><th class="num">Top m</th><th>Use as</th></tr></thead><tbody>${names.map(k=>{ const g=groups[k]; const role=guessRole(k); return `<tr><td>${k}<br><span class="why">${Object.entries(g.kinds).map(([t,c])=>t+' ×'+c).join(', ')}</span></td><td class="num">${g.n}</td><td class="num">${g.top.toFixed(0)}</td><td><select data-layer="${k.replace(/"/g,'&quot;')}">${ROLES.map(([v,l])=>`<option value="${v}"${role===v?' selected':''}>${l}</option>`).join('')}</select></td></tr>`; }).join('')}</tbody>`;
+  const roleList=siteMode?SITE_ROLES:ROLES; const guess=k=>{ const r=guessRole(k); return siteMode?(r==='terrain'?'terrain':'context'):r; };
+  $(ID('layers')).innerHTML=`<thead><tr><th>Layer</th><th class="num">Objects</th><th class="num">Top m</th><th>Use as</th></tr></thead><tbody>${names.map(k=>{ const g=groups[k]; const role=guess(k); return `<tr><td>${k}<br><span class="why">${Object.entries(g.kinds).map(([t,c])=>t+' ×'+c).join(', ')}</span></td><td class="num">${g.n}</td><td class="num">${g.top.toFixed(0)}</td><td><select data-layer="${k.replace(/"/g,'&quot;')}">${roleList.map(([v,l])=>`<option value="${v}"${role===v?' selected':''}>${l}</option>`).join('')}</select></td></tr>`; }).join('')}</tbody>`;
   const sk=meshes.skipped?Object.entries(meshes.skipped):[];
   status(`${name}: ${meshes.length} objects on ${names.length} layer${names.length>1?'s':''}${sk.length?'; skipped '+sk.map(([k,c])=>c+' '+k.split('|')[1]+' on '+k.split('|')[0]).join(', '):''}. Choose what each layer becomes, then Import.`);
-  $('c-import-replace').checked=false; $('import-dialog').hidden=false;
+  $(ID('replace')).checked=siteMode; $(ID('dialog')).hidden=false;
 }
 function applyImport(){
-  if(!pending) return; const roles={}; document.querySelectorAll('#import-layers select').forEach(s=>{ roles[s.dataset.layer]=s.value; });
+  if(!pending) return; const roles={}; document.querySelectorAll('#'+ID('layers')+' select').forEach(s=>{ roles[s.dataset.layer]=s.value; });
   const by=r=>pending.meshes.filter(m=>roles[m.layerName||'model']===r);
   const massing=by('massing'), shading=by('shading'), pv=by('pv'), terrain=by('terrain'); for(const m of terrain){ m.layer='terrain'; m.isTerrain=true; } const ctx=by('context').concat(terrain);
   const origin=(LAB.site&&LAB.site.meta&&LAB.site.meta.origin)?LAB.site.meta.origin:[0,0];
@@ -83,7 +85,7 @@ function applyImport(){
   const inBase=Math.hypot(cx-origin[0],cy-origin[1])<400&&Math.hypot(origin[0],origin[1])>10;
   if(inBase){ for(const m of all) for(let i=0;i<m.v.length;i+=3){ m.v[i]-=origin[0]; m.v[i+1]-=origin[1]; } }
   const msg=[];
-  if(ctx.length){ if($('c-import-replace').checked||!LAB.site){ applySite(ctx,pending.name); } else { levelTerrain(ctx); for(const m of ctx){ if(!m.isTerrain) m.layer=/herit/i.test(m.layerName||'')?'heritage':'existing'; LAB.site.meshes.push(m); } LAB.buildSite(); } msg.push(ctx.length+' context objects'+(terrain.length?' including '+terrain.length+' terrain surface'+(terrain.length>1?'s':'')+' (ground at the tower set to 0 m; the rain study will route run-off over it)':'')); }
+  if(ctx.length){ if($(ID('replace')).checked||!LAB.site){ applySite(ctx,pending.name); } else { levelTerrain(ctx); for(const m of ctx){ if(!m.isTerrain) m.layer=/herit/i.test(m.layerName||'')?'heritage':'existing'; LAB.site.meshes.push(m); } LAB.buildSite(); } msg.push(ctx.length+' context objects'+(terrain.length?' including '+terrain.length+' terrain surface'+(terrain.length>1?'s':'')+' (ground at the tower set to 0 m; the rain study will route run-off over it)':'')); }
   if(massing.length){
     const U=voxelize(massing); LAB.upload=U; const S=LAB.S; S.typology='upload'; S.height=Math.round(U.top); S.step={mode:'none'}; S.overrides={}; S.voids=[];
     if(LAB.site&&LAB.site.site&&Math.hypot(U.cx,U.cy)<200){ S.posX=Math.round(U.cx); S.posY=Math.round(U.cy); } else { S.posX=0; S.posY=0; }
@@ -92,7 +94,7 @@ function applyImport(){
     msg.push(`massing from ${massing.length} objects: ${U.top.toFixed(0)} m tall, footprint about ${U.footprint.toLocaleString()} m²; ${LAB.uploadSummary()}`);
     if(shading.length) msg.push(shading.length+' shading objects'); if(pv.length) msg.push(pv.length+' PV objects');
   } else if(shading.length||pv.length){ status('Shading and PV layers need a massing layer in the same file to attach to. Choose a massing layer and import again.',true); return; }
-  LAB.update(); $('import-dialog').hidden=true; status(`Imported ${pending.name}: ${msg.join('; ')||'nothing selected'}.${inBase?' Coordinates were shifted from the base model onto the site centre.':''}${(shading.length||pv.length)?' Switch to Design development to study the modeled devices.':''}`); pending=null;
+  LAB.update(); $(ID('dialog')).hidden=true; status(`Imported ${pending.name}: ${msg.join('; ')||'nothing selected'}.${inBase?' Coordinates were shifted from the base model onto the site centre.':''}${(shading.length||pv.length)?' Switch to Design development to study the modeled devices.':''}`); pending=null;
   if(LAB.sim&&LAB.sim.afterImport) LAB.sim.afterImport();
 }
 
@@ -159,9 +161,9 @@ LAB.uploadFloors=function(S){
 LAB.uploadSummary=function(){ const U=LAB.upload; if(!U) return ''; if(U.levels&&U.useLevels!==false) return `${U.plates} floor plates found in the file (typical ${U.typical.toFixed(1)} m storey); floors follow them`; if(U.levels) return `${U.plates} floor plates found but the mass is sliced at ${LAB.S.f2f} m`; return `solid mass, no floor plates found; sliced at ${LAB.S.f2f} m`; };
 
 /* ---------- upload UI ---------- */
-function status(msg,isErr){ const el=$('io-status'); el.textContent=msg; el.style.color=isErr?'var(--warn)':'var(--muted)'; }
-async function handleFile(file){
-  status(`Reading ${file.name}…`); const fn=$('file-name'); if(fn) fn.textContent=file.name;
+function status(msg,isErr){ const el=$(ID('status')); el.textContent=msg; el.style.color=isErr?'var(--warn)':'var(--muted)'; }
+async function handleFile(file,site){
+  siteMode=!!site; status(`Reading ${file.name}…`); const fn=$(ID('name')); if(fn) fn.textContent=file.name;
   try{
     let meshes; const name=file.name.toLowerCase();
     if(name.endsWith('.obj')) meshes=parseOBJ(await file.text());
@@ -193,9 +195,14 @@ function applySite(meshes,name){
 LAB.io={parseOBJ,parseJSON,parse3DM,applySite,showImportDialog,applyImport,status,init(){
   $('file-in').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(f) handleFile(f); e.target.value=''; });
   $('import-apply').addEventListener('click',applyImport); $('import-cancel').addEventListener('click',()=>{ pending=null; $('import-dialog').hidden=true; status('Import cancelled.'); });
+  // the Site tab takes a site model the same way; every layer becomes context or terrain
+  $('site-file-in').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(f) handleFile(f,true); e.target.value=''; });
+  $('site-import-apply').addEventListener('click',applyImport); $('site-import-cancel').addEventListener('click',()=>{ pending=null; $('site-import-dialog').hidden=true; status('Import cancelled.'); });
+  const sdrop=$('site-drop'); sdrop.addEventListener('dragover',e=>{ e.preventDefault(); sdrop.classList.add('over'); }); sdrop.addEventListener('dragleave',()=>sdrop.classList.remove('over'));
+  sdrop.addEventListener('drop',e=>{ e.preventDefault(); sdrop.classList.remove('over'); const f=e.dataTransfer.files&&e.dataTransfer.files[0]; if(f) handleFile(f,true); });
   const drop=$('drop'); drop.addEventListener('dragover',e=>{ e.preventDefault(); drop.classList.add('over'); }); drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
   drop.addEventListener('drop',e=>{ e.preventDefault(); drop.classList.remove('over'); const f=e.dataTransfer.files&&e.dataTransfer.files[0]; if(f) handleFile(f); });
-  $('restore-site').addEventListener('click',()=>{ fetch('site.json').then(r=>r.json()).then(j=>{ LAB.site=j; LAB.buildSite(); LAB.update(); status('Vancouver competition site restored.'); }); });
+  $('restore-site').addEventListener('click',()=>{ fetch('site.json').then(r=>r.json()).then(j=>{ LAB.site=j; LAB.buildSite(); LAB.update(); siteMode=true; $('site-file-name').textContent='Vancouver Tall Base Model'; status('Vancouver competition site restored.'); }); });
   $('clear-upload').addEventListener('click',()=>{ LAB.upload=null; LAB.uploadRaw=null; const S=LAB.S; if(S.typology==='upload'){ S.typology='taper'; Object.assign(S,LAB.TYP.taper.defaults); S.height=280; } $('file-name').textContent='no file chosen'; LAB.update(); status('Uploaded model removed; the generated massing is back.'); });
   rhino().then(m=>{ status(m?'Ready. rhino3dm loaded: choose a .3dm and its layers will be listed.':'Ready. rhino3dm did not load here, so .3dm import is off; .obj and .json still work.'); });
 }};
