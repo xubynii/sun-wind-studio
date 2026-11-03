@@ -165,6 +165,12 @@ details summary::-webkit-details-marker{display:none}
 .figrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .figrow .fig{margin:8px 0 0}
 .empty{color:var(--muted);font-size:12px}
+.parts-dialog{position:absolute;left:12px;top:44px;width:min(470px,calc(100% - 24px));max-height:calc(100% - 130px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:14px 16px;z-index:20}
+.parts-dialog .pd-head{display:flex;justify-content:space-between;align-items:center}.parts-dialog h2{margin:0}
+.parts-dialog .ps{font:400 11.5px/1.45 var(--font-m);color:var(--muted)}
+.parts-dialog table.pt{width:100%;border-collapse:collapse;margin:8px 0}.parts-dialog table.pt td{padding:6px 4px;border-top:1px solid var(--line2);vertical-align:middle;font-size:12.5px}
+.parts-dialog tr.nf b{color:var(--muted)}.parts-dialog .sw{display:inline-block;width:12px;height:12px;border-radius:3px}
+.parts-dialog input[type=number]{width:72px}.parts-dialog select{max-width:170px}
 .fig[data-fig]{cursor:pointer;transition:border-color .15s,box-shadow .15s}
 .fig[data-fig]:hover,.fig[data-fig]:focus-visible{border-color:var(--accent);box-shadow:0 1px 6px rgba(0,0,0,.08);outline:none}
 .fig[data-fig] figcaption::after{content:'Explain ↗';float:right;margin-left:8px;color:var(--accent);font-weight:500}
@@ -297,7 +303,7 @@ h2 .help{order:0}
         <div class="sel-row"><label class="lvl">Ground level · model z <input type="number" id="up-grade" step="0.1" aria-label="Ground level in model z, metres"> m</label></div>
         <p class="note">Geometry below this height is underground: basement floors are drawn below the site and left out of the sun, wind, daylight and energy studies. Model z = 0 is ground by default; enter a negative or positive value to move it.</p>
         <div class="checks one"><label class="check" for="c-raw"><input type="checkbox" id="c-raw" checked><span>Show and study the uploaded geometry as modeled rather than the sliced massing</span></label></div>
-        <div class="actions"><button class="btn small adv" id="reslice" type="button">Change how the upload is sliced</button></div>
+        <div class="actions"><button class="btn small" id="parts-review" type="button">Check model parts</button><button class="btn small adv" id="reslice" type="button">Change how the upload is sliced</button></div>
         <div class="legend"><span><i style="background:var(--mass)"></i>Massing</span><span><i style="background:var(--spandrel)"></i>Floor plates and spandrels</span><span><i style="background:var(--glass)"></i>Glazing</span><span><i style="background:var(--shade-dev)"></i>Shading devices</span><span><i style="background:var(--pv)"></i>PV</span><span><i style="background:var(--green)"></i>Green wall</span></div>
         </div>
         <h2>Or generate a test massing</h2>
@@ -458,6 +464,7 @@ h2 .help{order:0}
       </div>
       <div class="hud" id="hud">Drag to orbit · scroll to zoom · drag the mass to move it</div>
       <div class="mass-hint" id="mass-hint" hidden><b>Mass selected</b> · ← → ↑ ↓ move 1 m · Shift 5 m · [ ] rotate 5° · Esc to deselect</div>
+      <div class="parts-dialog" id="parts-dialog" hidden role="dialog" aria-label="Check the model"></div>
       <div class="abar" id="abar">
         <div class="ov" title="Choose which study is drawn on the ground and shown in the review panel"><button type="button" id="view-sun" aria-pressed="false"><i style="background:var(--sun)"></i>Sun</button><button type="button" id="view-wind" aria-pressed="false"><i style="background:var(--wind)"></i>Wind</button><button type="button" id="view-rain" aria-pressed="false"><i style="background:#2F6FA8"></i>Rain</button></div>
         <div class="ramp" id="ov-legend"></div>
@@ -500,6 +507,7 @@ h2 .help{order:0}
 <script src="figdocs.js"></script>
 <script src="report.js"></script>
 <script src="io.js"></script>
+<script src="parts.js"></script>
 <script>
   LAB.boot(); LAB.climate.init(); LAB.sim.init(); LAB.energy.init(); LAB.report.init(); LAB.io.init(); LAB.tabs.init(); LAB.help.apply(document);
 </script>

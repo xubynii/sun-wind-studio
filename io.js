@@ -94,25 +94,32 @@ function applyImport(){
     msg.push(`massing from ${massing.length} objects: ${(U.top-U.grade).toFixed(0)} m above ground${U.grade>0?' and '+U.grade.toFixed(1)+' m below (model z under 0 is treated as underground)':''}, footprint about ${U.footprint.toLocaleString()} m²; ${LAB.uploadSummary()}`);
     if(shading.length) msg.push(shading.length+' shading objects'); if(pv.length) msg.push(pv.length+' PV objects');
   } else if(shading.length||pv.length){ status('Shading and PV layers need a massing layer in the same file to attach to. Choose a massing layer and import again.',true); return; }
-  LAB.update(); $(ID('dialog')).hidden=true; status(`Imported ${pending.name}: ${msg.join('; ')||'nothing selected'}.${inBase?' Coordinates were shifted from the base model onto the site centre.':''}${(shading.length||pv.length)?' Switch to Design development to study the modeled devices.':''}`); pending=null;
+  const impName=pending.name; LAB.update(); $(ID('dialog')).hidden=true; status(`Imported ${pending.name}: ${msg.join('; ')||'nothing selected'}.${inBase?' Coordinates were shifted from the base model onto the site centre.':''}${(shading.length||pv.length)?' Switch to Design development to study the modeled devices.':''}`); pending=null;
   if(LAB.sim&&LAB.sim.afterImport) LAB.sim.afterImport();
+  if(massing.length&&LAB.parts) setTimeout(()=>LAB.parts.open(massing,impName),60);
 }
 
 /* ---------- uploaded massing → per-floor masks ---------- */
-function voxelize(meshes){
+/* connected pieces of each object, vertices welded at 1 mm: a loose plate, canopy, column or stair inside one object becomes its own piece.
+   Each piece knows its layer and whether it is closed (every welded edge shared by exactly two triangles). */
+function splitPieces(meshes){ const pieces=[];
+  for(const m0 of meshes){ const key=new Map(), par=[]; const find=x=>{ while(par[x]!==x){ par[x]=par[par[x]]; x=par[x]; } return x; };
+    const vid=i=>{ const k=Math.round(m0.v[i*3]*1000)+','+Math.round(m0.v[i*3+1]*1000)+','+Math.round(m0.v[i*3+2]*1000); let id=key.get(k); if(id==null){ id=par.length; par.push(id); key.set(k,id); } return id; };
+    const tv=[]; for(let i=0;i<m0.f.length;i+=3){ const a=vid(m0.f[i]),b=vid(m0.f[i+1]),c=vid(m0.f[i+2]); tv.push(a,b,c); const ra=find(a); par[find(b)]=ra; par[find(c)]=ra; }
+    const groups=new Map(); for(let t=0;t<tv.length;t+=3){ const r=find(tv[t]); let g=groups.get(r); if(!g){ g={f:[],e:new Map()}; groups.set(r,g); } g.f.push(m0.f[t],m0.f[t+1],m0.f[t+2]);
+      for(const [p,q] of [[tv[t],tv[t+1]],[tv[t+1],tv[t+2]],[tv[t+2],tv[t]]]){ if(p===q) continue; const k=p<q?p+'_'+q:q+'_'+p; g.e.set(k,(g.e.get(k)||0)+1); } }
+    for(const g of groups.values()){ let closed=g.e.size>0; for(const c of g.e.values()){ if(c!==2){ closed=false; break; } } pieces.push({v:m0.v,f:g.f,layerName:m0.layerName,kind:m0.kind,closed}); } }
+  return pieces; }
+/* ref: the meshes that set the grid and datum (all of the massing layer); plates: confirmed floor-plate pieces, whose outlines count as floor */
+function voxelize(meshes,ref,plates){
   let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9,minz=1e9,maxz=-1e9;
-  for(const m of meshes) for(let i=0;i<m.v.length;i+=3){ minx=Math.min(minx,m.v[i]); maxx=Math.max(maxx,m.v[i]); miny=Math.min(miny,m.v[i+1]); maxy=Math.max(maxy,m.v[i+1]); minz=Math.min(minz,m.v[i+2]); maxz=Math.max(maxz,m.v[i+2]); }
+  for(const m of (ref||meshes)) for(let i=0;i<m.v.length;i+=3){ minx=Math.min(minx,m.v[i]); maxx=Math.max(maxx,m.v[i]); miny=Math.min(miny,m.v[i+1]); maxy=Math.max(maxy,m.v[i+1]); minz=Math.min(minz,m.v[i+2]); maxz=Math.max(maxz,m.v[i+2]); }
   const cx=(minx+maxx)/2, cy=(miny+maxy)/2, nx=Math.ceil(maxx-minx)+2, ny=Math.ceil(maxy-miny)+2, x0=-nx/2, y0=-ny/2;
   /* solid intervals per object from face orientation: going up a cell's column, a face pointing down is an entry and a face pointing up an exit.
      An exit with no entry (an open floor plate, a canopy, a mesh with a gap) is ignored, so it cannot flip everything stacked with it;
      stacked storeys that share a face simply close one interval and open the next. Objects with inward normals are flipped. */
   const merged=new Array(nx*ny); for(let k=0;k<nx*ny;k++) merged[k]=[]; let openHits=0; const singles=new Map();
-  // connected pieces of each object, vertices welded at 1 mm: a loose plate or canopy inside the same object is its own piece
-  const pieces=[]; for(const m0 of meshes){ const key=new Map(), par=[]; const find=x=>{ while(par[x]!==x){ par[x]=par[par[x]]; x=par[x]; } return x; };
-    const vid=i=>{ const k=Math.round(m0.v[i*3]*1000)+','+Math.round(m0.v[i*3+1]*1000)+','+Math.round(m0.v[i*3+2]*1000); let id=key.get(k); if(id==null){ id=par.length; par.push(id); key.set(k,id); } return id; };
-    const tv=[]; for(let i=0;i<m0.f.length;i+=3){ const a=vid(m0.f[i]),b=vid(m0.f[i+1]),c=vid(m0.f[i+2]); tv.push(a,b,c); const ra=find(a),rb=find(b),rc=find(c); par[rb]=ra; par[find(c)]=ra; }
-    const groups=new Map(); for(let t=0;t<tv.length;t+=3){ const r=find(tv[t]); let g=groups.get(r); if(!g){ g=[]; groups.set(r,g); } g.push(m0.f[t],m0.f[t+1],m0.f[t+2]); }
-    for(const f of groups.values()) pieces.push({v:m0.v,f}); }
+  const pieces=splitPieces(meshes);
   for(const m of pieces){ const hits=new Map(); let vol=0;
     for(let i=0;i<m.f.length;i+=3){ const a=m.f[i]*3,b=m.f[i+1]*3,c=m.f[i+2]*3; vol+=m.v[a]*(m.v[b+1]*m.v[c+2]-m.v[b+2]*m.v[c+1])-m.v[a+1]*(m.v[b]*m.v[c+2]-m.v[b+2]*m.v[c])+m.v[a+2]*(m.v[b]*m.v[c+1]-m.v[b+1]*m.v[c]); }
     const flip=vol<0?-1:1;
@@ -128,15 +135,16 @@ function voxelize(meshes){
       if(!closed&&u.length===1) singles.set(k,Math.max(singles.get(k)||0,u[0][0])); } }
   const ints=new Array(nx*ny); let any=0;
   for(let k=0;k<nx*ny;k++){ const iv=merged[k].sort((p,q)=>p[0]-q[0]); const out=[]; for(const p of iv){ const last=out[out.length-1]; if(last&&p[0]<=last[1]+0.2) last[1]=Math.max(last[1],p[1]); else out.push([p[0],p[1]]); } ints[k]=out; if(out.length) any++; }
+  let plateAll=null; if(plates&&plates.length){ plateAll=new Uint8Array(nx*ny); for(const p of plates) rasterPiece(p,cx,cy,x0,y0,nx,ny,k=>{ plateAll[k]=1; }); if(!any){ for(let k=0;k<nx*ny;k++) if(plateAll[k]) any++; } }
   if(!any&&singles.size){ for(const [k,z] of singles){ if(z>0.15){ ints[k]=[[0,z]]; any++; } } } // a model of open shells only: each surface stands on the ground, as before
   if(!any) throw new Error('The model has no closed volumes to slice. Make sure the massing is a closed mesh or polysurface.');
-  const U={nx,ny,x0,y0,ints,top:maxz-minz,base:0,footprint:any,cx,cy,minz,srcMeshes:meshes};
+  const U={nx,ny,x0,y0,ints,top:maxz-minz,base:0,footprint:any,cx,cy,minz,srcMeshes:meshes,plateAll};
   Object.assign(U,detectLevels(meshes,minz,maxz-minz,any,U));
   return U;
 }
 /* floor plates in a developed model: upward-facing horizontal faces whose area is a good share of the footprint, clustered by height.
    A plain mass has such faces only at its base and roof, so it reports none and is sliced at the floor-to-floor height instead. */
-function detectLevels(meshes,minz,top,footprint,U){ U=U||LAB.upload; const over=(x,y)=>{ if(!U||!U.ints) return true; const ix=Math.floor(x-U.cx-U.x0), iy=Math.floor(y-U.cy-U.y0); return ix>=0&&iy>=0&&ix<U.nx&&iy<U.ny&&U.ints[iy*U.nx+ix].length>0; }; // plates count only over the tower's own footprint, so a canopy or a neighbouring slab is not a floor
+function detectLevels(meshes,minz,top,footprint,U){ U=U||LAB.upload; const over=(x,y)=>{ if(!U||!U.ints) return true; const ix=Math.floor(x-U.cx-U.x0), iy=Math.floor(y-U.cy-U.y0); return ix>=0&&iy>=0&&ix<U.nx&&iy<U.ny&&(U.ints[iy*U.nx+ix].length>0||(U.plateAll&&U.plateAll[iy*U.nx+ix]===1)); }; // plates count only over the tower's own footprint, so a canopy or a neighbouring slab is not a floor
   const bin=0.25, hist=new Map();
   for(const m of meshes) for(let i=0;i<m.f.length;i+=3){ const a=m.f[i]*3,b=m.f[i+1]*3,c=m.f[i+2]*3;
     const ux=m.v[b]-m.v[a],uy=m.v[b+1]-m.v[a+1],uz=m.v[b+2]-m.v[a+2],vx=m.v[c]-m.v[a],vy=m.v[c+1]-m.v[a+1],vz=m.v[c+2]-m.v[a+2];
@@ -153,8 +161,13 @@ function detectLevels(meshes,minz,top,footprint,U){ U=U||LAB.upload; const over=
   if(med<2.4||med>9) return {levels:null,plates:interior.length,typical:med,useLevels:false,scan,reason:`${interior.length} plates found but their typical spacing of ${med.toFixed(1)} m is not a storey height (2.4–9 m)`};
   return {levels:merged,plates:interior.length,typical:med,useLevels:true,scan,reason:null,span:[merged[1],merged[merged.length-1]],gaps:[gaps[0],gaps[gaps.length-1]]};
 }
+function rasterPiece(p,cx,cy,x0,y0,nx,ny,fn){ const v=p.v; for(let i=0;i<p.f.length;i+=3){ const a=p.f[i]*3,b=p.f[i+1]*3,c=p.f[i+2]*3; const ax=v[a]-cx,ay=v[a+1]-cy,bx=v[b]-cx,by=v[b+1]-cy,qx=v[c]-cx,qy=v[c+1]-cy; const det=(bx-ax)*(qy-ay)-(qx-ax)*(by-ay); if(Math.abs(det)<1e-7) continue;
+    const ix0=Math.max(0,Math.floor(Math.min(ax,bx,qx)-x0)), ix1=Math.min(nx-1,Math.floor(Math.max(ax,bx,qx)-x0)), iy0=Math.max(0,Math.floor(Math.min(ay,by,qy)-y0)), iy1=Math.min(ny-1,Math.floor(Math.max(ay,by,qy)-y0));
+    for(let iy=iy0;iy<=iy1;iy++){ const py=y0+iy+0.5; for(let ix=ix0;ix<=ix1;ix++){ const px=x0+ix+0.5; const l1=((bx-px)*(qy-py)-(qx-px)*(by-py))/det, l2=((qx-px)*(ay-py)-(ax-px)*(qy-py))/det; if(l1>=-1e-6&&l2>=-1e-6&&1-l1-l2>=-1e-6) fn(iy*nx+ix); } } } }
+/* confirmed plates give each level its own outline: a plate counts for the level nearest its top within 0.6 m */
+function platesToLevels(U,plates){ if(!U.levels) return; U.plateCells=U.levels.map(()=>new Set()); for(const p of plates){ let zt=-1e9; for(let i=2;i<p.v.length;i+=3){} for(let i=0;i<p.f.length;i++){ const z=p.v[p.f[i]*3+2]; if(z>zt) zt=z; } zt-=U.minz; let best=-1, bd=0.6; U.levels.forEach((z,li)=>{ const d=Math.abs(z-zt); if(d<bd){ bd=d; best=li; } }); if(best<0) continue; const set=U.plateCells[best]; rasterPiece(p,U.cx,U.cy,U.x0,U.y0,U.nx,U.ny,k=>set.add(k)); } }
 /* re-run the plate scan on an uploaded model (the Design development slice step asks for it before slicing) */
-LAB.scanLevels=function(U){ U=U||LAB.upload; if(!U||!U.srcMeshes) return null; const keep=U.useLevels; Object.assign(U,detectLevels(U.srcMeshes,U.minz,U.top,U.footprint,U)); if(U.levels&&keep===false) U.useLevels=false; return U; };
+LAB.scanLevels=function(U){ U=U||LAB.upload; if(!U||!U.srcMeshes) return null; if(U.fromParts) return U; const keep=U.useLevels; Object.assign(U,detectLevels(U.srcMeshes,U.minz,U.top,U.footprint,U)); if(U.levels&&keep===false) U.useLevels=false; return U; };
 /* floors from the upload, split at the ground level: U.grade is the height of the ground above the model's lowest point (model z = 0 by default).
    Floors above it become the tower studied by every tool; floors below it are basements, kept in LAB.belowFloors with negative z. */
 LAB.uploadFloors=function(S){
@@ -163,12 +176,13 @@ LAB.uploadFloors=function(S){
   const byLevels=!!(U.levels&&U.useLevels!==false); const L=byLevels?U.levels:null;
   // candidate storeys in model coordinates (z0 from the model's base): file plates, or an even slice up and down from the ground
   const slabs=[];
-  if(byLevels){ for(let i=0;i<L.length;i++){ const z0=L[i], z1=i+1<L.length?L[i+1]:U.top; const h=z1-z0; if(h<1.8) continue; slabs.push({z0,h,probes:[z0+Math.min(1.2,h*0.4),z0+Math.min(0.3,h*0.15),z0-0.12,z0+h*0.6]}); } }
+  if(byLevels){ for(let i=0;i<L.length;i++){ const z0=L[i], z1=i+1<L.length?L[i+1]:U.top; const h=z1-z0; if(h<1.8) continue; slabs.push({z0,h,li:i,probes:[z0+Math.min(1.2,h*0.4),z0+Math.min(0.3,h*0.15),z0-0.12,z0+h*0.6]}); } }
   else { let k=0; for(let z=g;z+f<=top+1e-6&&k<220;z+=f,k++){ const o=S.overrides[k]||{}; const h=o.h||f; slabs.push({z0:z,h,probes:[z+h/2],k}); if(h!==f) z+=h-f; } for(let z=g-f;z>=-1e-6;z-=f) slabs.unshift({z0:z,h:f,probes:[z+f/2]}); }
   const out=[], below=[];
   for(const sl of slabs){ const {z0,h,probes}=sl; const under=z0+h<=g+0.3; if(!under&&z0>=top-0.5) continue;
     let bx0=1e9,bx1=-1e9,by0=1e9,by1=-1e9; const cells=[];
-    for(let iy=0;iy<U.ny;iy++) for(let ix=0;ix<U.nx;ix++){ const iv=U.ints[iy*U.nx+ix]; let inside=false; for(const p of iv){ for(const q of probes){ if(q>=p[0]&&q<=p[1]){ inside=true; break; } } if(inside) break; } if(inside){ cells.push(ix,iy); if(ix<bx0)bx0=ix; if(ix>bx1)bx1=ix; if(iy<by0)by0=iy; if(iy>by1)by1=iy; } }
+    const pc=sl.li!=null&&U.plateCells?U.plateCells[sl.li]:null;
+    for(let iy=0;iy<U.ny;iy++) for(let ix=0;ix<U.nx;ix++){ const iv=U.ints[iy*U.nx+ix]; let inside=!!(pc&&pc.has(iy*U.nx+ix)); for(const p of iv){ for(const q of probes){ if(q>=p[0]&&q<=p[1]){ inside=true; break; } } if(inside) break; } if(inside){ cells.push(ix,iy); if(ix<bx0)bx0=ix; if(ix>bx1)bx1=ix; if(iy<by0)by0=iy; if(iy>by1)by1=iy; } }
     if(!cells.length) continue;
     const nx=bx1-bx0+1, ny=by1-by0+1, w=nx, d=ny, ux=U.x0+bx0+w/2, uy=U.y0+by0+d/2;
     const mask={nx,ny,x0:-w/2,y0:-d/2,cells:new Uint8Array(nx*ny)}; for(let k=0;k<cells.length;k+=2) mask.cells[(cells[k+1]-by0)*nx+(cells[k]-bx0)]=1;
@@ -219,7 +233,7 @@ function applySite(meshes,name){
   LAB.buildSite(); LAB.update(); status(`Site replaced by ${name}: ${meshes.length||meshes.meshes.length} meshes. Restore the Vancouver site any time.`);
 }
 
-LAB.io={voxelize,parseOBJ,parseJSON,parse3DM,applySite,showImportDialog,applyImport,status,init(){
+LAB.io={splitPieces,detectLevels,platesToLevels,voxelize,parseOBJ,parseJSON,parse3DM,applySite,showImportDialog,applyImport,status,init(){
   $('file-in').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(f) handleFile(f); e.target.value=''; });
   $('import-apply').addEventListener('click',applyImport); $('import-cancel').addEventListener('click',()=>{ pending=null; $('import-dialog').hidden=true; status('Import cancelled.'); });
   // the Site tab takes a site model the same way; every layer becomes context or terrain
@@ -230,6 +244,7 @@ LAB.io={voxelize,parseOBJ,parseJSON,parse3DM,applySite,showImportDialog,applyImp
   const drop=$('drop'); drop.addEventListener('dragover',e=>{ e.preventDefault(); drop.classList.add('over'); }); drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
   drop.addEventListener('drop',e=>{ e.preventDefault(); drop.classList.remove('over'); const f=e.dataTransfer.files&&e.dataTransfer.files[0]; if(f) handleFile(f); });
   $('restore-site').addEventListener('click',()=>{ fetch('site.json').then(r=>r.json()).then(j=>{ LAB.site=j; LAB.buildSite(); LAB.update(); siteMode=true; $('site-file-name').textContent='Vancouver Tall Base Model'; status('Vancouver competition site restored.'); }); });
+  $('parts-review').addEventListener('click',()=>{ if(!LAB.parts) return; if(!LAB.parts.reopen()&&LAB.uploadRaw) LAB.parts.open(LAB.uploadRaw.massing,LAB.uploadRaw.name); });
   $('up-grade').addEventListener('change',e=>{ const v=parseFloat(e.target.value); if(isFinite(v)&&LAB.upload){ LAB.setGroundZ(v); status(`Ground level set at model z ${v.toFixed(1)} m: ${(LAB.belowFloors||[]).length} floors below ground, ${LAB.floors?LAB.floors.length:0} above.`); } });
   $('clear-upload').addEventListener('click',()=>{ LAB.upload=null; LAB.uploadRaw=null; LAB.belowFloors=[]; const S=LAB.S; if(S.typology==='upload'){ S.typology='taper'; Object.assign(S,LAB.TYP.taper.defaults); S.height=280; } $('file-name').textContent='no file chosen'; LAB.update(); status('Uploaded model removed; the generated massing is back.'); });
   rhino().then(m=>{ status(m?'Ready. rhino3dm loaded: choose a .3dm and its layers will be listed.':'Ready. rhino3dm did not load here, so .3dm import is off; .obj and .json still work.'); });

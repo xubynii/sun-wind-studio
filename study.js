@@ -211,6 +211,14 @@ function buildBelow(){ clearGroup(belowGroup); const B=(LAB.S.typology==='upload
   if(!B.length){ LAB.requestRender(); return; } const body=new Batch();
   for(const f of B){ const m=f.mask, hh=f.h-GAP; for(let iy=0;iy<m.ny;iy++){ let ix=0; while(ix<m.nx){ if(!m.cells[iy*m.nx+ix]){ ix++; continue; } let j=ix; while(j+1<m.nx&&m.cells[iy*m.nx+j+1]) j++; const lx=m.x0+(ix+j+1)/2, ly=m.y0+iy+0.5; const p=LAB.toWorld(f,lx,ly); body.box(p.x,p.y,f.z+hh/2,j-ix+1,1,hh,f.rot); ix=j+1; } } }
   const mesh=body.mesh(BELOW_MAT,{below:true}); if(mesh){ mesh.castShadow=false; mesh.receiveShadow=false; mesh.renderOrder=1; belowGroup.add(mesh); } LAB.requestRender(); }
+/* model parts review: highlight the pieces of one category over the model */
+const partsGroup=new THREE.Group(); partsGroup.renderOrder=6; LAB.scene.add(partsGroup);
+function showParts(pieces,color){ clearGroup(partsGroup); const R=LAB.uploadRaw, U=LAB.upload; if(!pieces||!pieces.length||!R){ LAB.requestRender(); return; }
+  const mat=new THREE.MeshBasicMaterial({color:new THREE.Color(color||'#C8552D'),transparent:true,opacity:0.85,depthTest:false,side:THREE.DoubleSide}); const S=LAB.S;
+  for(const p of pieces){ const pos=new Float32Array(p.f.length*3); for(let i=0;i<p.f.length;i++){ const q=p.f[i]*3; pos[i*3]=p.v[q]-R.cx; pos[i*3+1]=p.v[q+2]-R.minz; pos[i*3+2]=-(p.v[q+1]-R.cy); } const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3)); const m=new THREE.Mesh(g,mat); m.renderOrder=6; m.userData.deco=true; partsGroup.add(m); }
+  partsGroup.position.set(S.posX,-((U&&U.grade)||0),-S.posY); partsGroup.rotation.y=S.rotDeg*Math.PI/180; LAB.requestRender(); }
+function applyModelWWR(w){ if(!SW||!w) return; for(const z of SW.zones){ const faces=z.face==='all'?['N','E','S','W']:[z.face]; const vals=faces.map(f=>w[f]).filter(v=>v!=null); if(vals.length) z.wwr=Math.max(0.1,Math.min(0.95,+(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2))); } persist(); try{ syncZoneUI(); }catch(e){} markStaleAll(); }
+function markStaleAll(){ if(sunResult) stale.sun=true; if(windResult) stale.wind=true; showStale(); }
 function buildAdv(){
   const R=LAB.uploadRaw; if(!R){ advGroup.visible=false; return; }
   if(advVersion!==R.version){
@@ -614,7 +622,7 @@ let stale={sun:false,wind:false,rain:false}, busy=false;
 function showStale(){ if(busy) return; $('run-sun').textContent=stale.sun?'Run study (settings changed)':'Run study'; $('run-wind').textContent=stale.wind?'Run study (settings changed)':'Run study'; $('run-rain').textContent=stale.rain?'Run study (settings changed)':'Run study'; }
 function renderRain(){ try{ setOut('rain',LAB.rain?LAB.rain.html():''); }catch(e){ console.error(e); } }
 /* an uploaded mass entering Design development: ask whether to slice it into floors, or keep the plates found in the file */
-function maybeSliceDialog(){ const U=LAB.upload; const dlg=$('slice-dialog'); if(!adv()||!U||LAB.S.typology!=='upload'){ dlg.hidden=true; return; } SW.sliceOK=SW.sliceOK||{}; const key=String(LAB.uploadRaw?LAB.uploadRaw.version:0); if(SW.sliceOK[key]){ dlg.hidden=true; return; }
+function maybeSliceDialog(){ const U=LAB.upload; const dlg=$('slice-dialog'); if(!adv()||!U||LAB.S.typology!=='upload'){ dlg.hidden=true; return; } const pc=document.getElementById('parts-dialog'); if(pc&&!pc.hidden) return; if(U.fromParts){ SW.sliceOK=SW.sliceOK||{}; SW.sliceOK[String(LAB.uploadRaw?LAB.uploadRaw.version:0)]=true; dlg.hidden=true; return; } SW.sliceOK=SW.sliceOK||{}; const key=String(LAB.uploadRaw?LAB.uploadRaw.version:0); if(SW.sliceOK[key]){ dlg.hidden=true; return; }
   // 1. scan the model for floor plates; 2. offer them, or an even slice at the set floor-to-floor height when there are none
   $('slice-f2f').value=LAB.S.f2f; $('slice-text').textContent='Scanning the model for floor plates…'; $('slice-apply').hidden=true; $('slice-keep').hidden=true; $('slice-row').hidden=true; dlg.hidden=false; LAB.tabs.show('model');
   setTimeout(()=>{ try{ if(LAB.scanLevels) LAB.scanLevels(U); }catch(e){ console.error(e); } sliceText(); },60); }
@@ -712,7 +720,7 @@ function syncUI(){
 function updateGeomInfo(){ const R=LAB.uploadRaw; const el=$('geom-info'); $('lod-block').hidden=!R;
   if(!R){ el.innerHTML=''; return; } const gi=$('up-grade'); if(gi&&document.activeElement!==gi&&LAB.groundZ) gi.value=LAB.groundZ().toFixed(1);
   el.innerHTML=`<p class="blurb" style="margin-top:0"><b>${R.name}</b>: ${R.massing.length} massing object${R.massing.length>1?'s':''}, ${R.shading.length} shading, ${R.pv.length} PV${R.pv.length?' ('+fmtI(meshArea(R.pv))+' m²)':''}. ${useRaw()?(adv()?'Shown and studied as modeled with every layer, so fins, overhangs, balconies and voids in the file shade the façades; zone devices are added on top.':'Shown and studied as the massing layer alone; switch to Design development to bring in the shading and PV layers.'):'Shown and studied as the sliced massing; turn the modeled geometry on to use the file itself.'}</p><p class="blurb"><b>Floors:</b> ${LAB.uploadSummary?LAB.uploadSummary():''} · ${LAB.floors?LAB.floors.length:0} floors in the study.</p>`;
-  $('reslice').hidden=!adv(); if(LAB.help) LAB.help.apply(el);
+  $('reslice').hidden=!adv(); if(LAB.help) LAB.help.apply(el); if(LAB.modelParts){ const P=LAB.modelParts; el.insertAdjacentHTML('beforeend',`<p class="blurb"><b>Parts confirmed:</b> ${['floor','core','window','facade','structure','stair','ceiling','roof'].filter(k=>P.counts[k]&&P.confirmed[k]).map(k=>P.counts[k]+' '+({floor:'floor plates',core:'core',window:'windows',facade:'façade',structure:'structure',stair:'stairs',ceiling:'ceilings',roof:'roof'})[k]).join(', ')||'none'}${P.wwr?' · window-to-wall '+['N','E','S','W'].map(k=>k+' '+(P.wwr[k]==null?'–':Math.round(P.wwr[k]*100)+'%')).join(' '):''}${P.ceilingH?' · floor-to-ceiling '+P.ceilingH.toFixed(2)+' m':''}</p>`); }
 }
 /* one study as a promise: the sun render (plus daylight and ASE in Advanced) or the wind flow (plus ventilation in Advanced) */
 function progressTo(kind,msg){ $('run-'+kind).textContent=msg; $('run-all-status').textContent=msg; $(kind==='sun'?'run-daylight-status':kind==='wind'?'run-vent-status':'run-rain-status').textContent=msg; $('run-active').textContent=msg; $('run-active').disabled=true; }
@@ -1208,7 +1216,7 @@ window.addEventListener('keydown',e=>{ if(!massSel) return; const t=e.target; if
 LAB.hooks.afterUpdate.push(()=>{ if(massSel) refreshMassSel(); });
 LAB.sim={init(){ initState(); buildUI(); placeControls(); syncGeometry(); updateGeomInfo(); renderSky(); applySunView(); if(LAB.S.impact.mode!=='sun'&&LAB.S.impact.mode!=='wind') setMode('sun'); else runCurrent(false); rerender();
     setTimeout(()=>autoRun(0),900); },
-  sunPos, runCurrent, runSunStudy, runWindStudy, setMode, setStudioMode, reportData, periodInfo, roseFor, DATES, STRATS, solarStudy, ventStudy, terraceWind, windProfile, zoneFor, zoneGlazing, energyChanged, exposurePass, setOverlay, dni, terrainDEM, towerRaster, plazaCellsAt, buildSiteRaster:()=>{ if(!siteRaster) buildSiteRaster(); return siteRaster; }, DOM,
+  showParts, applyModelWWR, sunPos, runCurrent, runSunStudy, runWindStudy, setMode, setStudioMode, reportData, periodInfo, roseFor, DATES, STRATS, solarStudy, ventStudy, terraceWind, windProfile, zoneFor, zoneGlazing, energyChanged, exposurePass, setOverlay, dni, terrainDEM, towerRaster, plazaCellsAt, buildSiteRaster:()=>{ if(!siteRaster) buildSiteRaster(); return siteRaster; }, DOM,
   markStale(kind){ stale[kind]=true; showStale(); }, rerenderRain:renderRain, afterImport(){ if(!SW) return; updateGeomInfo(); if(adv()) setTimeout(maybeSliceDialog,0); },
   get windResult(){return windResult;}, get sunResult(){return sunResult;}, get SW(){return SW;}};
 })();
