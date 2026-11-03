@@ -165,7 +165,21 @@ details summary::-webkit-details-marker{display:none}
 .figrow{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .figrow .fig{margin:8px 0 0}
 .empty{color:var(--muted);font-size:12px}
-.parts-dialog{position:absolute;left:12px;top:44px;width:min(470px,calc(100% - 24px));max-height:calc(100% - 130px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:14px 16px;z-index:20}
+.parts-dialog{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(1100px,96vw);max-height:92vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 0 0 100vmax rgba(10,15,20,.45),0 12px 40px rgba(0,0,0,.25);padding:16px 18px;z-index:60}
+.parts-dialog .pd-body{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,1fr);gap:16px;margin-top:10px}
+.parts-dialog .pd-view{position:relative;height:min(64vh,560px);border-radius:10px;background:var(--panel2);border:1px solid var(--line);overflow:hidden}
+.parts-dialog .pd-view canvas{display:block;width:100%;height:100%;cursor:grab}
+.parts-dialog .pd-tools{position:absolute;right:8px;top:8px;display:flex;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:3px 8px}
+.parts-dialog .pd-hint{position:absolute;left:10px;bottom:8px;font:400 11px/1.3 var(--font-m);color:var(--muted);pointer-events:none}
+.parts-dialog .pd-dots{display:flex;flex-wrap:wrap;gap:4px}
+.parts-dialog .pd-dot{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:3px 9px;font:500 11.5px/1.3 var(--font-b);color:var(--ink);cursor:pointer}
+.parts-dialog .pd-dot.on{border-color:var(--accent);background:var(--accent-soft)}.parts-dialog .pd-dot i{font-style:normal;color:var(--ok)}
+.parts-dialog .pd-step{margin:12px 0;padding:12px;border:1px solid var(--line);border-radius:10px}
+.parts-dialog .pd-stephead{display:flex;align-items:center;gap:8px}.parts-dialog .pd-stephead h3{margin:0;flex:1}.parts-dialog .sw.lg{width:16px;height:16px}
+.parts-dialog .pd-sum{font-size:13px;line-height:1.5;margin:8px 0}.parts-dialog .pd-q{display:flex;align-items:center;gap:8px;margin:10px 0}
+.parts-dialog .pd-fix{display:flex;flex-direction:column;gap:6px;margin:6px 0 4px;padding:8px;background:var(--panel2);border-radius:8px}
+.parts-dialog .pd-nav{display:flex;justify-content:space-between;margin-top:8px}
+@media (max-width:820px){ .parts-dialog .pd-body{grid-template-columns:1fr} .parts-dialog .pd-view{height:320px} }
 .parts-dialog .pd-head{display:flex;justify-content:space-between;align-items:center}.parts-dialog h2{margin:0}
 .parts-dialog .ps{font:400 11.5px/1.45 var(--font-m);color:var(--muted)}
 .parts-dialog table.pt{width:100%;border-collapse:collapse;margin:8px 0}.parts-dialog table.pt td{padding:6px 4px;border-top:1px solid var(--line2);vertical-align:middle;font-size:12.5px}
@@ -467,7 +481,6 @@ h2 .help{order:0}
       </div>
       <div class="hud" id="hud">Drag to orbit · scroll to zoom · drag the mass to move it</div>
       <div class="mass-hint" id="mass-hint" hidden><b>Mass selected</b> · ← → ↑ ↓ move 1 m · Shift 5 m · [ ] rotate 5° · Esc to deselect</div>
-      <div class="parts-dialog" id="parts-dialog" hidden role="dialog" aria-label="Check the model"></div>
       <div class="abar" id="abar">
         <div class="ov" title="Choose which study is drawn on the ground and shown in the review panel"><button type="button" id="view-sun" aria-pressed="false"><i style="background:var(--sun)"></i>Sun</button><button type="button" id="view-wind" aria-pressed="false"><i style="background:var(--wind)"></i>Wind</button><button type="button" id="view-rain" aria-pressed="false"><i style="background:#2F6FA8"></i>Rain</button></div>
         <div class="ramp" id="ov-legend"></div>
@@ -496,6 +509,7 @@ h2 .help{order:0}
   </div>
 </div>
 
+<div class="parts-dialog" id="parts-dialog" hidden role="dialog" aria-modal="true" aria-label="Check the model"></div>
 <script>window.LAB_CONFIG={name:'Sun & Wind Studio',key:'supertall-sunwind-studio-v1',tab:'model'};</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>

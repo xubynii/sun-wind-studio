@@ -54,49 +54,79 @@ function summarise(){ const S=state; const by={}; for(const c of CATS) by[c[0]]=
     stair:by.stair.length?`${by.stair.length} stair${by.stair.length>1?'s':''}`:'',
     mass:by.mass.length?`${by.mass.length} closed volume${by.mass.length>1?'s':''}`:''};
 }
-/* ---------- the review card and the exploded preview ---------- */
+/* ---------- the review popup: a 3-D preview of the model beside a step-through of the parts found ---------- */
 const ORDER=['floor','ground','facade','window','roof','ceiling','structure','core','stair','mass','other'];
 function nearestLevel(S,z){ let best=0, bd=1e9; S.levels.forEach((l,i)=>{ const d=Math.abs(l-z); if(d<bd){ bd=d; best=i; } }); return S.levels.length?best:0; }
 function groundIds(S){ if(!S.levels.length) return []; const z=S.levels[nearestLevel(S,S.groundZ)]; return S.by.floor.filter(i=>Math.abs(S.info[i].z1-z)<0.6); }
-function rowHTML(k){ const S=state; const ids=k==='ground'?groundIds(S):S.by[k]; const n=ids.length; const found=k==='ground'||n>0;
-  const s=k==='ground'?`ground at model z <input type="number" id="pt-ground" step="0.05" value="${S.groundZ}" aria-label="Ground floor level, model z"> m${S.levels.length?' · plate at '+S.levels[nearestLevel(S,S.groundZ)].toFixed(2)+' m':''}`:(S.sum[k]||'not found in the model');
-  const vis=!S.hideCat[k]; const ck=S.confirmed[k];
-  return `<tr class="${found?'':'nf'}${n?' pick':''}${S.show===k?' on':''}" ${n?`data-pick="${k}"`:''}><td><label class="eye" title="Show in the preview"><input type="checkbox" data-vis="${k}" ${vis?'checked':''} ${n?'':'disabled'}><span class="sw" style="background:${COL[k]}"></span></label></td><td><b>${NAME[k]}</b><br><span class="ps">${s}</span></td><td>${k==='mass'||k==='other'?'':`<label class="check"><input type="checkbox" data-ok="${k}" ${found&&ck!==false?'checked':''} ${found?'':'disabled'}><span>${found?'Correct':'–'}</span></label>`}</td></tr>`; }
-function layerRows(){ const S=state; return Object.keys(S.byLayer).sort().map(L=>{ const ids=S.byLayer[L]; const tally={}; for(const i of ids) tally[S.cat[i]]=(tally[S.cat[i]]||0)+1; const top=Object.entries(tally).sort((a,b)=>b[1]-a[1]); const dom=top.length?top[0][0]:'other'; const esc=LAB.viz?LAB.viz.esc(L):L; const q=L.replace(/"/g,'&quot;');
-  return `<tr class="pick${S.showLayer===L?' on':''}" data-lpick="${q}"><td><label class="eye"><input type="checkbox" data-lvis="${q}" ${S.hideLayer[L]?'':'checked'}><span class="sw" style="background:${COL[dom]}"></span></label></td><td>${esc}<br><span class="ps">${ids.length} piece${ids.length>1?'s':''} · ${top.map(([c,n])=>NAME[c]+(n>1?' ×'+n:'')).join(', ')}</span></td><td><select data-layer="${q}" aria-label="Role of layer ${esc}"><option value="auto"${(S.layerChoice[L]||'auto')==='auto'?' selected':''}>As scanned</option>${CATS.map(c=>`<option value="${c[0]}"${S.layerChoice[L]===c[0]?' selected':''}>${c[1]}</option>`).join('')}</select></td></tr>`; }).join(''); }
-function render(){ const S=state; const card=$('parts-dialog'); if(!card) return; const nL=Object.keys(S.byLayer).length;
-  card.innerHTML=`<div class="pd-head"><h2>Check the model</h2><button type="button" class="btn small" id="pt-close" aria-label="Close">✕</button></div>
-  <p class="ps">The scan found these parts in <b>${S.name}</b>. Click a part or a layer to highlight it in the model, click it again to clear; untick to hide it, and confirm each part.</p>
-  <div class="pt-explode">${S.show||S.showLayer?`<span>Highlighted: <b>${S.show?NAME[S.show]:(LAB.viz?LAB.viz.esc(S.showLayer):S.showLayer)}</b></span><button type="button" class="btn small" id="pt-clear">Clear</button>`:'<span class="ps">Nothing highlighted</span>'}<button type="button" class="btn small" id="pt-frame">Frame</button></div>
-  <h3>Parts</h3><table class="pt"><tbody>${ORDER.filter(k=>k!=='other'||S.by.other.length).map(rowHTML).join('')}</tbody></table>
-  <h3>Layers <span class="ps">${nL} in the massing</span></h3><div class="pt-lbtn"><button type="button" class="btn small" id="pt-all">Show all</button><button type="button" class="btn small" id="pt-none">Hide all</button></div><table class="pt"><tbody>${layerRows()}</tbody></table>
-  <div class="actions"><button type="button" class="btn primary" id="pt-apply">Use these parts</button><button type="button" class="btn" id="pt-skip">Keep the plain import</button></div>
-  <p class="ps">Floor plates set the storeys and plate outlines, the ground floor sets the ground level, the core sets the core share, and windows against façade set the window-to-wall ratio of each face. Structure, stairs, windows and façade panels are left out of the solid massing. Hidden parts are only hidden in this preview.</p>`;
-  card.hidden=false;
-  const q=sel=>card.querySelector(sel);
-  q('#pt-close').onclick=close; q('#pt-skip').onclick=()=>{ close(); if(LAB.sim&&LAB.sim.afterImport) LAB.sim.afterImport(); }; q('#pt-apply').onclick=apply; q('#pt-frame').onclick=()=>{ if(LAB.sim&&LAB.sim.framePreview) LAB.sim.framePreview(); };
-  const skip=e=>e.target.closest('input,select,button,label'); const cl=q('#pt-clear'); if(cl) cl.onclick=()=>{ S.show=null; S.showLayer=null; highlight(); render(); };
-  card.querySelectorAll('[data-pick]').forEach(r=>r.onclick=e=>{ if(skip(e)) return; const k=r.dataset.pick; S.showLayer=null; S.show=S.show===k?null:k; highlight(); render(); });
-  card.querySelectorAll('[data-lpick]').forEach(r=>r.onclick=e=>{ if(skip(e)) return; const L=r.dataset.lpick; S.show=null; S.showLayer=S.showLayer===L?null:L; highlight(); render(); });
-  card.querySelectorAll('[data-ok]').forEach(c=>c.onchange=()=>{ S.confirmed[c.dataset.ok]=c.checked; });
-  card.querySelectorAll('[data-vis]').forEach(c=>c.onchange=()=>{ S.hideCat[c.dataset.vis]=!c.checked; highlight(); });
-  card.querySelectorAll('[data-lvis]').forEach(c=>c.onchange=()=>{ S.hideLayer[c.dataset.lvis]=!c.checked; highlight(); });
-  q('#pt-all').onclick=()=>{ S.hideLayer={}; S.hideCat={}; highlight(); render(); }; q('#pt-none').onclick=()=>{ for(const L in S.byLayer) S.hideLayer[L]=true; highlight(); render(); };
-  card.querySelectorAll('select[data-layer]').forEach(s=>s.onchange=()=>{ S.layerChoice[s.dataset.layer]=s.value; classify(); highlight(); render(); });
-  const g=q('#pt-ground'); if(g) g.onchange=()=>{ const v=parseFloat(g.value); if(isFinite(v)){ S.groundZ=v; highlight(); render(); } };
+function idsOf(S,k){ return k==='ground'?groundIds(S):(S.by[k]||[]); }
+function steps(S){ return ORDER.filter(k=>k==='ground'?S.levels.length>0:idsOf(S,k).length>0); }
+const esc=s=>LAB.viz?LAB.viz.esc(s):String(s);
+/* the preview: its own renderer, scene and orbit, so the main viewport is untouched */
+let V=null;
+function viewer(host){ if(V&&V.host===host) return V; if(V) disposeViewer();
+  const W=Math.max(200,host.clientWidth), H=Math.max(200,host.clientHeight); const r=new THREE.WebGLRenderer({antialias:true,alpha:true}); r.setPixelRatio(Math.min(2,window.devicePixelRatio||1)); r.setSize(W,H); host.insertBefore(r.domElement,host.firstChild);
+  const sc=new THREE.Scene(); sc.add(new THREE.HemisphereLight(0xffffff,0x8a939c,0.85)); const dl=new THREE.DirectionalLight(0xffffff,0.65); dl.position.set(0.6,1,0.8); sc.add(dl);
+  const cam=new THREE.PerspectiveCamera(35,W/H,0.5,50000); const grp=new THREE.Group(); sc.add(grp); const orb={th:0.75,ph:1.05,dist:200,t:new THREE.Vector3()};
+  const draw=()=>{ cam.position.set(orb.t.x+orb.dist*Math.sin(orb.ph)*Math.sin(orb.th),orb.t.y+orb.dist*Math.cos(orb.ph),orb.t.z+orb.dist*Math.sin(orb.ph)*Math.cos(orb.th)); cam.lookAt(orb.t); r.render(sc,cam); };
+  let drag=null; const el=r.domElement; el.style.touchAction='none';
+  el.addEventListener('pointerdown',e=>{ drag={x:e.clientX,y:e.clientY,pan:e.button===2||e.shiftKey}; el.setPointerCapture(e.pointerId); });
+  el.addEventListener('pointermove',e=>{ if(!drag) return; const dx=e.clientX-drag.x, dy=e.clientY-drag.y; drag.x=e.clientX; drag.y=e.clientY;
+    if(drag.pan){ const k=orb.dist*0.0016; orb.t.x-=dx*k*Math.cos(orb.th); orb.t.z+=dx*k*Math.sin(orb.th); orb.t.y+=dy*k; } else { orb.th-=dx*0.007; orb.ph=Math.min(1.55,Math.max(0.08,orb.ph-dy*0.006)); } draw(); });
+  el.addEventListener('pointerup',()=>{ drag=null; }); el.addEventListener('contextmenu',e=>e.preventDefault());
+  el.addEventListener('wheel',e=>{ e.preventDefault(); orb.dist=Math.max(10,orb.dist*(1+e.deltaY*0.0012)); draw(); },{passive:false});
+  const ro=new ResizeObserver(()=>{ const w=host.clientWidth, h=host.clientHeight; if(!w||!h) return; r.setSize(w,h); cam.aspect=w/h; cam.updateProjectionMatrix(); draw(); }); ro.observe(host);
+  V={host,r,sc,cam,grp,orb,draw,ro,mats:{}}; return V; }
+function disposeViewer(){ if(!V) return; try{ V.ro.disconnect(); clearViewer(); V.r.dispose(); V.r.forceContextLoss&&V.r.forceContextLoss(); V.r.domElement.remove(); }catch(e){} V=null; }
+function clearViewer(){ while(V.grp.children.length){ const o=V.grp.children.pop(); if(o.geometry) o.geometry.dispose(); } }
+function mat(c,ghost){ const k=c+(ghost?'g':''); if(!V.mats[k]) V.mats[k]=ghost?new THREE.MeshLambertMaterial({color:new THREE.Color(c),transparent:true,opacity:0.16,depthWrite:false}):new THREE.MeshLambertMaterial({color:new THREE.Color(c),side:THREE.DoubleSide}); return V.mats[k]; }
+function frame(){ if(!V) return; const b=new THREE.Box3().setFromObject(V.grp); if(b.isEmpty()) return; const c=b.getCenter(new THREE.Vector3()), sz=b.getSize(new THREE.Vector3()); V.orb.t.copy(c); V.orb.dist=Math.max(30,Math.max(sz.x,sz.y,sz.z)*1.9); V.draw(); }
+/* rebuild the preview: the current part (or layer) in its colour with outlines, everything else as a grey ghost, or hidden */
+function paint(){ const S=state; if(!V) return; clearViewer(); const C=S.ctx; const sel=S.showLayer?null:(S.mode==='layer'?null:S.cur); const selIds=new Set(S.showLayer?S.byLayer[S.showLayer]:(sel?idsOf(S,sel):[]));
+  const groups=new Map(); S.pieces.forEach((p,i)=>{ if(S.hideLayer[p.layerName||'model']) return; const on=selIds.has(i); if(!on&&!S.ghost) return; const key=on?(S.showLayer?COL[S.cat[i]]:COL[sel]):'ghost'; let g=groups.get(key); if(!g){ g=[]; groups.set(key,g); } g.push(p); });
+  for(const [key,list] of groups){ let n=0; for(const p of list) n+=p.f.length; const pos=new Float32Array(n*3); let w=0; for(const p of list) for(let i=0;i<p.f.length;i++){ const q=p.f[i]*3; pos[w++]=p.v[q]-C.cx; pos[w++]=p.v[q+2]-C.minz; pos[w++]=-(p.v[q+1]-C.cy); }
+    const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3)); g.computeVertexNormals(); const ghost=key==='ghost'; const m=new THREE.Mesh(g,mat(ghost?'#9AA3AD':key,ghost)); m.renderOrder=ghost?2:1; V.grp.add(m);
+    if(!ghost&&n<600000){ const e=new THREE.LineSegments(new THREE.EdgesGeometry(g,30),new THREE.LineBasicMaterial({color:0x1d2731,transparent:true,opacity:0.5})); V.grp.add(e); } }
+  // ground plane at the ground floor level
+  const gs=Math.max(C.dx,C.dy)*1.6+20; const gp=new THREE.Mesh(new THREE.PlaneGeometry(gs,gs),new THREE.MeshBasicMaterial({color:0x7f8b96,transparent:true,opacity:0.12,side:THREE.DoubleSide,depthWrite:false})); gp.rotation.x=-Math.PI/2; gp.position.y=S.groundZ-C.minz; V.grp.add(gp);
+  const gl=new THREE.LineSegments(new THREE.EdgesGeometry(gp.geometry),new THREE.LineBasicMaterial({color:0x7f8b96})); gl.rotation.x=-Math.PI/2; gl.position.y=gp.position.y; V.grp.add(gl);
+  if(!S.framed){ S.framed=true; frame(); } else V.draw(); }
+function stepHTML(S){ const st=steps(S); if(!st.length) return '<p class="empty">Nothing recognisable was found in the massing layer.</p>'; const k=S.cur, idx=st.indexOf(k); const ids=idsOf(S,k);
+  const layers={}; for(const i of ids){ const L=S.pieces[i].layerName||'model'; layers[L]=(layers[L]||0)+1; } const ans=S.confirmed[k];
+  const sum=k==='ground'?`The ground floor is the plate at model z <input type="number" id="pt-ground" step="0.05" value="${S.groundZ}" aria-label="Ground floor level, model z"> m. Everything below it becomes basement.`:(S.sum[k]||'');
+  return `<div class="pd-stephead"><span class="sw lg" style="background:${COL[k]}"></span><h3>${NAME[k]}</h3><span class="ps">${idx+1} of ${st.length}</span></div>
+  <p class="pd-sum">${sum}</p>
+  <p class="ps">${ids.length} piece${ids.length===1?'':'s'} on ${Object.keys(layers).length} layer${Object.keys(layers).length===1?'':'s'}: ${Object.entries(layers).map(([L,n])=>`<b>${esc(L)}</b>${n>1?' ×'+n:''}`).join(', ')}</p>
+  ${k==='mass'||k==='other'?`<p class="ps">${k==='mass'?'Closed volumes that are none of the above; they form the solid massing.':'Small pieces the scan could not place; they are left out.'}</p>`:`<div class="pd-q"><span>Is this right?</span><button type="button" class="btn ${ans===true?'primary':''}" id="pt-yes">Yes</button><button type="button" class="btn ${ans===false?'primary':''}" id="pt-no">No</button></div>`}
+  ${S.fix===k?`<div class="pd-fix"><p class="ps">Change what these layers are, or mark the part as not in this model.</p>${Object.keys(layers).map(L=>`<label class="lvl">${esc(L)} <select data-layer="${L.replace(/"/g,'&quot;')}"><option value="auto"${(S.layerChoice[L]||'auto')==='auto'?' selected':''}>As scanned</option>${CATS.map(c=>`<option value="${c[0]}"${S.layerChoice[L]===c[0]?' selected':''}>${c[1]}</option>`).join('')}</select></label>`).join('')}<button type="button" class="btn small" id="pt-none-here">Not in this model</button></div>`:''}
+  <div class="pd-nav"><button type="button" class="btn small" id="pt-prev" ${idx<=0?'disabled':''}>← Previous</button><button type="button" class="btn small" id="pt-next" ${idx>=st.length-1?'disabled':''}>Next →</button></div>`; }
+function render(){ const S=state; const card=$('parts-dialog'); if(!card) return; const st=steps(S); if(!S.cur||!st.includes(S.cur)) S.cur=st[0];
+  const dots=st.map(k=>{ const a=S.confirmed[k]; return `<button type="button" class="pd-dot${k===S.cur&&!S.showLayer?' on':''}" data-step="${k}" title="${NAME[k]}"><span class="sw" style="background:${COL[k]}"></span>${NAME[k]}<i>${a===true?'✓':(a===false?'✕':'')}</i></button>`; }).join('');
+  const layers=Object.keys(S.byLayer).sort();
+  card.innerHTML=`<div class="pd-head"><div><h2>Check the model</h2><span class="ps">${esc(S.name)} · ${S.pieces.length} pieces on ${layers.length} layer${layers.length===1?'':'s'}</span></div><button type="button" class="btn small" id="pt-close" aria-label="Close">✕</button></div>
+  <div class="pd-body"><div class="pd-view" id="pt-view"><div class="pd-tools"><label class="check"><input type="checkbox" id="pt-ghost" ${S.ghost?'checked':''}><span>Show the rest</span></label><button type="button" class="btn small" id="pt-frame">Frame</button></div><div class="pd-hint">Drag to orbit · right-drag to pan · scroll to zoom</div></div>
+  <div class="pd-side"><div class="pd-dots">${dots}</div><div class="pd-step">${S.showLayer?`<div class="pd-stephead"><h3>Layer · ${esc(S.showLayer)}</h3></div><p class="ps">${S.byLayer[S.showLayer].length} pieces, coloured by the part each was read as.</p><button type="button" class="btn small" id="pt-back">Back to the parts</button>`:stepHTML(S)}</div>
+  <details class="pd-layers"${S.openLayers?' open':''}><summary>All layers (${layers.length})</summary><table class="pt"><tbody>${layers.map(L=>{ const ids=S.byLayer[L]; const t={}; for(const i of ids) t[S.cat[i]]=(t[S.cat[i]]||0)+1; const top=Object.entries(t).sort((a,b)=>b[1]-a[1]); const q=L.replace(/"/g,'&quot;'); return `<tr class="pick${S.showLayer===L?' on':''}" data-lpick="${q}"><td><input type="checkbox" data-lvis="${q}" ${S.hideLayer[L]?'':'checked'} aria-label="Show layer ${esc(L)}"></td><td><span class="sw" style="background:${COL[top[0][0]]}"></span> ${esc(L)}<br><span class="ps">${top.map(([c,n])=>NAME[c]+(n>1?' ×'+n:'')).join(', ')}</span></td><td><select data-layer="${q}" aria-label="Role of layer ${esc(L)}"><option value="auto"${(S.layerChoice[L]||'auto')==='auto'?' selected':''}>As scanned</option>${CATS.map(c=>`<option value="${c[0]}"${S.layerChoice[L]===c[0]?' selected':''}>${c[1]}</option>`).join('')}</select></td></tr>`; }).join('')}</tbody></table></details>
+  <div class="actions"><button type="button" class="btn primary" id="pt-apply">Use these parts</button><button type="button" class="btn" id="pt-skip">Keep the plain import</button></div></div></div>`;
+  card.hidden=false; const q=sel=>card.querySelector(sel);
+  // the preview survives re-renders: move its canvas into the new host
+  const host=q('#pt-view'); if(V){ V.host=host; host.insertBefore(V.r.domElement,host.firstChild); V.ro.disconnect(); V.ro.observe(host); } else viewer(host); paint();
+  q('#pt-close').onclick=close; q('#pt-skip').onclick=()=>{ close(); if(LAB.sim&&LAB.sim.afterImport) LAB.sim.afterImport(); }; q('#pt-apply').onclick=apply; q('#pt-frame').onclick=frame;
+  q('#pt-ghost').onchange=e=>{ S.ghost=e.target.checked; paint(); };
+  card.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{ S.cur=b.dataset.step; S.showLayer=null; S.fix=null; render(); });
+  const go=d=>{ const s2=steps(S); const i=s2.indexOf(S.cur)+d; if(i>=0&&i<s2.length){ S.cur=s2[i]; S.fix=null; render(); } };
+  const pv=q('#pt-prev'), nx=q('#pt-next'); if(pv) pv.onclick=()=>go(-1); if(nx) nx.onclick=()=>go(1);
+  const y=q('#pt-yes'); if(y) y.onclick=()=>{ S.confirmed[S.cur]=true; S.fix=null; const s2=steps(S); const i=s2.indexOf(S.cur); if(i<s2.length-1) S.cur=s2[i+1]; render(); };
+  const n=q('#pt-no'); if(n) n.onclick=()=>{ S.fix=S.fix===S.cur?null:S.cur; render(); };
+  const nh=q('#pt-none-here'); if(nh) nh.onclick=()=>{ S.confirmed[S.cur]=false; S.fix=null; go(1); render(); };
+  const bk=q('#pt-back'); if(bk) bk.onclick=()=>{ S.showLayer=null; render(); };
+  card.querySelectorAll('select[data-layer]').forEach(s=>s.onchange=()=>{ S.layerChoice[s.dataset.layer]=s.value; classify(); render(); });
+  card.querySelectorAll('[data-lvis]').forEach(c=>c.onchange=()=>{ S.hideLayer[c.dataset.lvis]=!c.checked; paint(); });
+  card.querySelectorAll('[data-lpick]').forEach(r=>r.onclick=e=>{ if(e.target.closest('input,select')) return; const L=r.dataset.lpick; S.showLayer=S.showLayer===L?null:L; S.openLayers=true; render(); });
+  const pl=q('.pd-layers'); if(pl) pl.ontoggle=()=>{ S.openLayers=pl.open; };
+  const g=q('#pt-ground'); if(g) g.onchange=()=>{ const v=parseFloat(g.value); if(isFinite(v)){ S.groundZ=v; render(); } };
 }
-/* exploded axonometric: floors and ceilings lift apart level by level, the roof rises above them, façade and glass move out from their face;
-   core, structure, stairs and massing volumes stay in place. Offsets are in model metres (x east, y north, z up). */
-function offsets(S){ const e=S.explode, nL=Math.max(1,S.levels.length); const gap=Math.max(2.5,Math.min(8,(S.ctx.top||40)/nL*0.6)); const out=[];
-  S.pieces.forEach((p,i)=>{ const I=S.info[i], c=S.cat[i]; let dx=0,dy=0,dz=0; const li=nearestLevel(S,c==='ceiling'?I.z1:I.z0);
-    if(c==='floor'||c==='ceiling'||c==='facade'||c==='window') dz=e*gap*li; if(c==='roof') dz=e*(gap*nL+gap*2);
-    if(c==='facade'||c==='window'){ const ux=I.cx-S.ctx.cx, uy=I.cy-S.ctx.cy; const ax=Math.abs(ux)/Math.max(1,S.ctx.dx), ay=Math.abs(uy)/Math.max(1,S.ctx.dy); const push=e*Math.max(6,0.25*Math.max(S.ctx.dx,S.ctx.dy)); if(ax>=ay) dx=Math.sign(ux)*push; else dy=Math.sign(uy)*push; if(c==='window'){ dx*=1.35; dy*=1.35; } }
-    if(c==='structure') dx=-e*(S.ctx.dx*0.5+12); if(c==='stair'){ dx=e*(S.ctx.dx*0.5+12); }
-    out.push({dx,dy,dz}); }); return out; }
-function highlight(){ const S=state; if(!S||!LAB.sim||!LAB.sim.showExploded) return; const off=offsets(S); const gIds=S.show==='ground'?new Set(groundIds(S)):null; const items=[];
-  S.pieces.forEach((p,i)=>{ const c=S.cat[i]; if(S.hideCat[c]||S.hideLayer[p.layerName||'model']) return; let col=(S.show||S.showLayer)?COL[c]:'#B7BEC6', dim=false; if(S.show){ const on=S.show==='ground'?gIds.has(i):c===S.show; if(!on) dim=true; else if(S.show==='ground') col=COL.ground; } else if(S.showLayer){ if((p.layerName||'model')!==S.showLayer) dim=true; } items.push({p,color:col,dim,off:off[i]}); });
-  LAB.sim.showExploded(items); }
-function close(){ const c=$('parts-dialog'); if(c) c.hidden=true; if(state){ state.show=null; } if(LAB.sim&&LAB.sim.showExploded) LAB.sim.showExploded(null); }
+function highlight(){ paint(); }
+function close(){ const c=$('parts-dialog'); if(c) c.hidden=true; disposeViewer(); if(state){ state.framed=false; } }
 /* ---------- apply the confirmed parts ---------- */
 function apply(){ const S=state; const ok=k=>S.confirmed[k]!==false&&S.by[k]&&S.by[k].length>0; const io=LAB.io; const U0=LAB.upload; if(!U0){ close(); return; }
   const keepOut=new Set(['structure','stair','other']); if(ok('window')) keepOut.add('window'); if(ok('facade')) keepOut.add('facade'); if(ok('ceiling')) keepOut.add('ceiling');
@@ -114,7 +144,7 @@ function open(massing,name){ if(!massing||!massing.length) return; const pieces=
   let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9,z0=1e9,z1=-1e9; for(const I of inf){ x0=Math.min(x0,I.x0); x1=Math.max(x1,I.x1); y0=Math.min(y0,I.y0); y1=Math.max(y1,I.y1); z0=Math.min(z0,I.z0); z1=Math.max(z1,I.z1); }
   const U=LAB.upload; const foot=U&&U.footprint?U.footprint:(x1-x0)*(y1-y0)*0.6;
   const byLayer={}; pieces.forEach((p,i)=>{ const L=p.layerName||'model'; (byLayer[L]=byLayer[L]||[]).push(i); });
-  state={name:name||'the model',pieces,info:inf,all:massing,byLayer,layerChoice:{},confirmed:{},ctx:{top:z1,minz:z0,foot:Math.max(50,foot),cx:(x0+x1)/2,cy:(y0+y1)/2,dx:x1-x0,dy:y1-y0},groundZ:null,show:null,showLayer:null,explode:0,hideCat:{},hideLayer:{}};
+  state={name:name||'the model',pieces,info:inf,all:massing,byLayer,layerChoice:{},confirmed:{},ctx:{top:z1,minz:z0,foot:Math.max(50,foot),cx:(x0+x1)/2,cy:(y0+y1)/2,dx:x1-x0,dy:y1-y0},groundZ:null,showLayer:null,hideLayer:{},cur:null,fix:null,ghost:true,framed:false};
   classify(); render(); highlight(); }
 function reopen(){ if(state){ render(); highlight(); return true; } return false; }
 LAB.parts={open,reopen,close,apply,CATS,get state(){return state;}};
