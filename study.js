@@ -70,7 +70,8 @@ function periodInfo(){
 function roseFor(PI){
   const rose=CLIMATE.rose.map(r=>({dir:r.dir,name:r.name,f:0,s:0})); let tot=0;
   for(let m=0;m<12;m++){ const w=PI.monthDays[m]; if(!w) continue; const wint=0.5+0.5*Math.cos(2*Math.PI*(m+0.5)/12);
-    rose.forEach((r,i)=>{ const f=wint*SEASON_ROSE.winter[i]+(1-wint)*SEASON_ROSE.summer[i], s=wint*SEASON_SPEED.winter[i]+(1-wint)*SEASON_SPEED.summer[i]; r.f+=w*f; r.s+=w*f*s; }); tot+=w; }
+    const RM=CLIMATE.roseMonthly&&CLIMATE.roseMonthly[m];
+    rose.forEach((r,i)=>{ const f=RM?RM[i].f:(wint*SEASON_ROSE.winter[i]+(1-wint)*SEASON_ROSE.summer[i]), s=RM?RM[i].s:(wint*SEASON_SPEED.winter[i]+(1-wint)*SEASON_SPEED.summer[i]); r.f+=w*f; r.s+=w*f*s; }); tot+=w; }
   rose.forEach(r=>{ r.s=r.f?r.s/r.f:3.5; r.f=tot?r.f/tot:0; }); return rose;
 }
 const PERIOD_PRESETS=[['Whole year','01-01','12-31'],['Winter · Dec–Feb','12-01','02-28'],['Spring · Mar–May','03-01','05-31'],['Summer · Jun–Aug','06-01','08-31'],['Fall · Sep–Nov','09-01','11-30'],['Equinox day · 21 Mar','03-21','03-21'],['Equinox week','03-18','03-24']];
@@ -345,7 +346,7 @@ function runSunStudy(){
   for(const d of perDay){ const hh={N:0,E:0,S:0,W:0,roof:0}; for(const r of d.hourly) for(const o of ORI5){ if(facArea[o]>0&&r.A[o]>0.03*facArea[o]) hh[o]++; } d.sunH=hh; for(const o of ORI5){ sunH[o]+=hh[o]*d.yearDays; sunHexp[o]+=hh[o]*d.yearDays*d.sf; } }
   for(const o of ORI5) sunH[o]/=wsum;
   const heat={by:byPeriod,area:facArea,total:ORI5.reduce((s,o)=>s+byPeriod[o],0),intensity:ORI5.reduce((m,o)=>{ m[o]=facArea[o]>0?byPeriod[o]/facArea[o]:0; return m; },{}),sunH,sunHexp,gfa,
-    diffH:scope==='date'?0.12*perDay[0].hourly.reduce((s,r)=>s+r.I*Math.sin(r.alt),0)/1000:CLIMATE.ghi.reduce((s,g,m)=>s+g*KD[m]*PI.monthDays[m],0)};
+    diffH:scope==='date'?0.12*perDay[0].hourly.reduce((s,r)=>s+r.I*Math.sin(r.alt),0)/1000:CLIMATE.ghi.reduce((s,g,m)=>s+g*(CLIMATE.kd?CLIMATE.kd[m]:KD[m])*PI.monthDays[m],0)};
   const foot=towerRaster(2,sunRes.w,sunRes.h), plazaCells=plazaCellsAt(2,sunRes.w,sunRes.h), site=LAB.site, tp=site?site.labels.find(l=>/TRANSIT/.test(l.text)):null;
   const metric=scope==='period'?yearH:avg; const th=scope==='period'?[100,250,500].map(t=>Math.max(1,Math.round(t*PI.days/365))):[1,2,4];
   let a1=0,a2=0,a4=0,plaza=0,plazaTot=0,siteOpen=0,transit=0; const newSh=new Float32Array(N);
@@ -1073,9 +1074,10 @@ function customReportData(){
   return out;
 }
 /* ---------- hooks and boot ---------- */
-function autoRun(n){ if(!SW||sunResult||busy) return; if(!LAB.site&&n<10){ setTimeout(()=>autoRun(n+1),500); return; } if(LAB.S.impact.mode==='sun'&&LAB.S.impact.sun.scope==='date'){ try{ runCurrent(true); }catch(e){ console.warn(e); } } }
+function autoRun(n){ if(!SW||sunResult||busy) return; if((!LAB.site||CLIMATE.pending)&&n<12){ setTimeout(()=>autoRun(n+1),500); return; } if(LAB.S.impact.mode==='sun'&&LAB.S.impact.sun.scope==='date'){ try{ runCurrent(true); }catch(e){ console.warn(e); } } }
 LAB.hooks.afterUpdate.push(floors=>{ if(!SW) return; siteRaster=null; syncGeometry(); updateGeomInfo(); syncZoneUI(); try{ renderPlan(); }catch(e){ console.error(e); } if(LAB.rain&&LAB.rain.result){ stale.rain=true; showStale(); if(LAB.S.impact.mode==='rain') renderRain(); } if(LAB.S.impact.mode==='sun'){ applySunView(); if(sunResult){ stale.sun=true; showStale(); } } if(LAB.S.impact.mode==='wind'&&windResult){ stale.wind=true; showStale(); } });
 LAB.hooks.afterSite.push(()=>{ sunResult=null; windResult=null; if(!SW) return; clearOverlay(); if(!busy) rerender(); setTimeout(()=>autoRun(0),400); });
+LAB.hooks.afterWeather.push(()=>{ if(!SW) return; syncPeriodUI(); renderSky(); if(sunResult){ stale.sun=true; } if(windResult){ stale.wind=true; } if(LAB.rain&&LAB.rain.result){ stale.rain=true; } showStale(); if(!busy) rerender(); });
 LAB.hooks.tab.push(name=>{ if(SW) onTab(name); });
 LAB.sim={init(){ initState(); buildUI(); placeControls(); syncGeometry(); updateGeomInfo(); renderSky(); applySunView(); if(LAB.S.impact.mode!=='sun'&&LAB.S.impact.mode!=='wind') setMode('sun'); else runCurrent(false); rerender();
     setTimeout(()=>autoRun(0),900); },

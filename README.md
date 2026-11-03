@@ -11,7 +11,7 @@ Early-design sun, wind, daylight, natural-ventilation and energy studies on a su
 
 **Live:** https://xubynii.github.io/sun-wind-studio/ (GitHub Pages, served from `main`).
 
-Everything is indicative: shadows are rendered hour by hour on the site model, the wind is a two-dimensional pedestrian-level flow, and the daylight, ventilation and energy readings use simplified rules in the manner of the standards they cite. None of it replaces a Radiance, CFD or EnergyPlus model for a permit or a LEED submission.
+Weather is the CWEC2020 typical year for Vancouver International Airport (climate.onebuilding.org), loaded from `weather.json`; solar geometry is computed for the site. Everything is indicative: shadows are rendered hour by hour on the site model, the wind is a two-dimensional pedestrian-level flow, and the daylight, ventilation and energy readings use simplified rules in the manner of the standards they cite. None of it replaces a Radiance, CFD or EnergyPlus model for a permit or a LEED submission.
 
 ## How to use it
 
@@ -53,7 +53,8 @@ then open http://localhost:8000/. Any static host works the same way. PDFs downl
 | `energy.js` | massing efficiency and the monthly energy model |
 | `rain.js` | driving rain, rain shadow, entrance shelter and roof catchment |
 | `io.js` | Rhino / OBJ / JSON import with layer roles |
-| `climate.js` | Vancouver climate normals |
+| `climate.js` | Vancouver climate: loads `weather.json` at boot, typed normals as fallback |
+| `weather.json` | CWEC2020 typical year for Vancouver Intl AP (WMO 718920) distilled from the EPW: hourly temperature, wind, irradiation; monthly normals; monthly and annual wind roses; rain rose and ISO 15927-3 driving-rain sums (monthly rainfall normals from the station's .stat file, spread over overcast humid hours, since the EPW carries no hourly rain) |
 | `report.js` | PDF reports (jsPDF) |
 | `site.json`, `rhino3dm.min.js`, `rhino3dm.wasm` | downtown Vancouver site model and the Rhino loader |
 
