@@ -457,9 +457,9 @@ h2 .help{order:0}
       <div class="hud" id="hud">Drag to orbit · scroll to zoom · drag the mass to move it</div>
       <div class="mass-hint" id="mass-hint" hidden><b>Mass selected</b> · ← → ↑ ↓ move 1 m · Shift 5 m · [ ] rotate 5° · Esc to deselect</div>
       <div class="abar" id="abar">
-        <div class="ov"><button type="button" id="view-sun" aria-pressed="false"><i style="background:var(--sun)"></i>Sun</button><button type="button" id="view-wind" aria-pressed="false"><i style="background:var(--wind)"></i>Wind</button><button type="button" id="view-rain" aria-pressed="false"><i style="background:#2F6FA8"></i>Rain</button></div>
+        <div class="ov" title="Choose which study is drawn on the ground and shown in the review panel"><button type="button" id="view-sun" aria-pressed="false"><i style="background:var(--sun)"></i>Sun</button><button type="button" id="view-wind" aria-pressed="false"><i style="background:var(--wind)"></i>Wind</button><button type="button" id="view-rain" aria-pressed="false"><i style="background:#2F6FA8"></i>Rain</button></div>
         <div class="ramp" id="ov-legend"></div>
-        <button class="btn primary" id="run-active" type="button">Run</button>
+        <button class="btn primary" id="run-active" type="button" title="Run the study shown in the overlay">Run</button>
       </div>
     </main>
 
@@ -476,7 +476,6 @@ h2 .help{order:0}
         <p class="note" id="plan-note"></p>
       </div></div>
       <div id="impact-out" hidden></div>
-      <details style="margin-top:14px" open><summary>Sky and wind for the period</summary><div id="sky" style="margin-top:8px"></div></details>
       <div class="warn" id="warn"></div>
       <details style="margin-top:12px"><summary>Vancouver climate</summary><div id="climate"></div></details>
       <h3>About these studies</h3>
