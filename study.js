@@ -240,6 +240,18 @@ function buildDress(floors,raw){
     for(const [sx,sy,su,sv] of [[1,0,cd,bd+2*cd],[-1,0,cd,bd+2*cd],[0,1,bw,cd],[0,-1,bw,cd]]){ const q=LAB.toWorld(f0,sx*(bw/2+cd/2),sy*(bd/2+cd/2)); solid.box(q.x,q.y,zc,su,sv,0.3,f0.rot); } }
   for(const [b,mat,ud] of [[glass,MAT.glass,{viz:true}],[shade,MAT.shade,{viz:true}],[pv,MAT.pv,{viz:true}],[green,MAT.green,{viz:true}],[slabs,MAT.spandrel,{cat:'tower'}],[solid,MAT.spandrel,{cat:'tower'}]]){ const m=b.mesh(mat,ud); if(m) dressGroup.add(m); }
 }
+/* street labels lie flat on the ground along their streets instead of floating as billboards; the core's sprites are kept hidden so its sizing code is untouched */
+function nearestStreetAngle(x,y){ const site=LAB.site; if(!site||!site.curves) return 0; let best=1e9, ang=0;
+  for(const c of site.curves){ if(c.layer!=='curb'&&c.layer!=='block'&&c.layer!=='outline') continue; for(let i=0;i+1<c.pts.length;i++){ const a=c.pts[i], b=c.pts[i+1]; const dx=b[0]-a[0], dy=b[1]-a[1]; const L2=dx*dx+dy*dy; if(L2<4) continue; let t=((x-a[0])*dx+(y-a[1])*dy)/L2; t=Math.max(0,Math.min(1,t)); const px=a[0]+t*dx-x, py=a[1]+t*dy-y; const d=px*px+py*py; if(d<best){ best=d; ang=Math.atan2(dy,dx); } } }
+  if(best>60*60) return 0; if(ang>Math.PI/2) ang-=Math.PI; if(ang<=-Math.PI/2) ang+=Math.PI; return ang; }
+function flattenLabels(){
+  const g=LAB.siteGroup; const old=[]; g.traverse(o=>{ if(o.userData.labelPlane) old.push(o); }); for(const o of old){ g.remove(o); o.geometry.dispose(); }
+  const pt=(LAB.S.site&&LAB.S.site.labelPt)||12; const hM=pt*0.42; // label height in metres on the ground
+  g.traverse(sp=>{ if(!sp.isSprite||!sp.userData.label) return; sp.visible=false; const L=sp.userData.label; const w=hM*L.w/L.h; const x=sp.position.x, y=-sp.position.z;
+    const mesh=new THREE.Mesh(new THREE.PlaneGeometry(w,hM),new THREE.MeshBasicMaterial({map:sp.material.map,transparent:true,depthWrite:false})); mesh.userData.labelPlane=true; mesh.renderOrder=3;
+    mesh.rotation.x=-Math.PI/2; mesh.rotateOnWorldAxis(new THREE.Vector3(0,1,0),nearestStreetAngle(x,y)); mesh.position.set(x,0.45,-y); g.add(mesh); });
+  LAB.requestRender();
+}
 function syncGeometry(){
   applyColors(); buildAdv(); const raw=useRaw();
   LAB.towerGroup.visible=false; advGroup.visible=raw; for(const o of advGroup.children) o.visible=o.userData.cat==='tower'||adv();
@@ -281,7 +293,7 @@ function sunDay(doy,tz,h0,h1,ctx,positions){
       const acc=cfg?withT:without; for(let k=0;k<N;k++){ if(buf[k*4]<thr) acc[k]+=1; } }
     setTower(true); LAB.scene.overrideMaterial=null;
     const d=sunDir(p); sunCam.position.set(d.x*2500,d.z*2500,-d.y*2500); sunCam.lookAt(0,80,0); sunCam.updateProjectionMatrix();
-    const swap=(list,mat)=>{ for(const m of list){ m.userData._m=m.material; m.material=typeof mat==='function'?mat(m):mat; } }; const restore=list=>{ for(const m of list){ m.material=m.userData._m; } };
+    const swap=(list,mat)=>{ for(const m of list){ if(!m.userData._m) m.userData._m=m.material; m.material=typeof mat==='function'?mat(m):mat; } }; const restore=list=>{ for(const m of list){ if(m.userData._m){ m.material=m.userData._m; delete m.userData._m; } } };
     const count=()=>{ R.setRenderTarget(rtSun); R.clear(); R.render(LAB.scene,sunCam); const b=readRT(rtSun); let c=0; for(let k=0;k<b.length;k+=4) if(b[k]>128) c++; return c; };
     R.shadowMap.enabled=false; LAB.ground.material=black;
     swap(siteMeshes,white); swap(towerMeshes,black); const litWith=count();
@@ -322,7 +334,7 @@ function runSunStudy(){
   const prevClear=new THREE.Color(); R.getClearColor(prevClear); const prevAlpha=R.getClearAlpha();
   const prev={shadow:R.shadowMap.enabled,cast:LAB.sun.castShadow,hemi:LAB.hemi.intensity,sunI:LAB.sun.intensity,bg:LAB.scene.background,ground:LAB.ground.material,ov:overlayMesh?overlayMesh.visible:false};
   R.shadowMap.enabled=true; LAB.sun.castShadow=true; LAB.hemi.intensity=0; LAB.sun.intensity=1; LAB.scene.background=null; R.setClearColor(0x000000,0); if(overlayMesh) overlayMesh.visible=false;
-  const hiddenObjs=[]; LAB.scene.traverse(o=>{ if((o.isLine||o.isPoints||o.isSprite)&&o.visible){ o.visible=false; hiddenObjs.push(o); } });
+  const hiddenObjs=[]; LAB.scene.traverse(o=>{ if((o.isLine||o.isPoints||o.isSprite||o.userData.labelPlane)&&o.visible){ o.visible=false; hiddenObjs.push(o); } });
   const N=sunRes.w*sunRes.h; const scope=(sd.scope==='period')?'period':'date'; const PI=periodInfo();
   let days;
   if(scope==='period'){ const nS=PI.days<=3?PI.days:(PI.days<=45?Math.max(3,Math.ceil(PI.days/4)):12); days=[];
@@ -383,7 +395,7 @@ function exposurePass(alt,azDeg){
   const prevClear=new THREE.Color(); R.getClearColor(prevClear); const prevAlpha=R.getClearAlpha();
   const prev={shadow:R.shadowMap.enabled,cast:LAB.sun.castShadow,hemi:LAB.hemi.intensity,sunI:LAB.sun.intensity,bg:LAB.scene.background,ground:LAB.ground.material,ov:overlayMesh?overlayMesh.visible:false};
   R.shadowMap.enabled=true; LAB.sun.castShadow=true; LAB.hemi.intensity=0; LAB.sun.intensity=1; LAB.scene.background=null; R.setClearColor(0x000000,0); if(overlayMesh) overlayMesh.visible=false;
-  const hiddenObjs=[]; LAB.scene.traverse(o=>{ if((o.isLine||o.isPoints||o.isSprite)&&o.visible){ o.visible=false; hiddenObjs.push(o); } });
+  const hiddenObjs=[]; LAB.scene.traverse(o=>{ if((o.isLine||o.isPoints||o.isSprite||o.userData.labelPlane)&&o.visible){ o.visible=false; hiddenObjs.push(o); } });
   let out=null, err=null;
   try{ const r=sunDay(0,0,0,0,ctx,[{h:0,p:{alt,az:azDeg*Math.PI/180}}]); const H=r.hourly[0]||null; out={shade:r.v,A:H?H.A:null,Az:H?H.Az:null,nF,lostA:r.lostWh,pxArea:(920/512)*(920/512)}; }catch(e){ err=e; }
   R.setRenderTarget(null); LAB.scene.overrideMaterial=null; R.shadowMap.enabled=prev.shadow; LAB.sun.castShadow=prev.cast; LAB.hemi.intensity=prev.hemi; LAB.sun.intensity=prev.sunI; LAB.scene.background=prev.bg; LAB.ground.material=prev.ground; R.setClearColor(prevClear,prevAlpha);
@@ -639,6 +651,7 @@ function buildUI(){
   LAB.controlsFor($('params-dl'),DL_P,'dl',()=>SW.dl,()=>{ LAB.syncFor($('params-dl'),DL_P,'dl',SW.dl); persist(); if(sunResult) stale.sun=true; showStale(); rerender(); });
   LAB.controlsFor($('params-ws'),WS_P,'ws',()=>SW.ws,()=>{ LAB.syncFor($('params-ws'),WS_P,'ws',SW.ws); persist(); syncGeometry(); stale.wind=true; if(sunResult) stale.sun=true; showStale(); if(LAB.S.impact.mode==='wind') renderWind(windResult); });
   $('c-raw').addEventListener('change',e=>{ SW.show.raw=e.target.checked; persist(); syncGeometry(); if(sunResult) stale.sun=true; showStale(); updateGeomInfo(); });
+  const lp=document.getElementById('p-labelPt'); if(lp) lp.addEventListener('input',()=>flattenLabels());
   buildPeriodUI();
   syncUI();
 }
@@ -1080,7 +1093,7 @@ function customReportData(){
 /* ---------- hooks and boot ---------- */
 function autoRun(n){ if(!SW||sunResult||busy) return; if((!LAB.site||CLIMATE.pending)&&n<12){ setTimeout(()=>autoRun(n+1),500); return; } if(LAB.S.impact.mode==='sun'&&LAB.S.impact.sun.scope==='date'){ try{ runCurrent(true); }catch(e){ console.warn(e); } } }
 LAB.hooks.afterUpdate.push(floors=>{ if(!SW) return; siteRaster=null; syncGeometry(); updateGeomInfo(); syncZoneUI(); try{ renderPlan(); }catch(e){ console.error(e); } if(LAB.rain&&LAB.rain.result){ stale.rain=true; showStale(); if(LAB.S.impact.mode==='rain') renderRain(); } if(LAB.S.impact.mode==='sun'){ applySunView(); if(sunResult){ stale.sun=true; showStale(); } } if(LAB.S.impact.mode==='wind'&&windResult){ stale.wind=true; showStale(); } });
-LAB.hooks.afterSite.push(()=>{ sunResult=null; windResult=null; if(!SW) return; clearOverlay(); if(!busy) rerender(); setTimeout(()=>autoRun(0),400); });
+LAB.hooks.afterSite.push(()=>{ sunResult=null; windResult=null; try{ flattenLabels(); }catch(e){ console.warn(e); } if(!SW) return; clearOverlay(); if(!busy) rerender(); setTimeout(()=>autoRun(0),400); });
 LAB.hooks.afterWeather.push(()=>{ if(!SW) return; syncPeriodUI(); renderSky(); if(sunResult){ stale.sun=true; } if(windResult){ stale.wind=true; } if(LAB.rain&&LAB.rain.result){ stale.rain=true; } showStale(); if(!busy) rerender(); });
 LAB.hooks.tab.push(name=>{ if(SW) onTab(name); });
 LAB.sim={init(){ initState(); buildUI(); placeControls(); syncGeometry(); updateGeomInfo(); renderSky(); applySunView(); if(LAB.S.impact.mode!=='sun'&&LAB.S.impact.mode!=='wind') setMode('sun'); else runCurrent(false); rerender();
