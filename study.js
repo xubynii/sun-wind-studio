@@ -217,6 +217,23 @@ function showParts(pieces,color){ clearGroup(partsGroup); const R=LAB.uploadRaw,
   const mat=new THREE.MeshBasicMaterial({color:new THREE.Color(color||'#C8552D'),transparent:true,opacity:0.85,depthTest:false,side:THREE.DoubleSide}); const S=LAB.S;
   for(const p of pieces){ const pos=new Float32Array(p.f.length*3); for(let i=0;i<p.f.length;i++){ const q=p.f[i]*3; pos[i*3]=p.v[q]-R.cx; pos[i*3+1]=p.v[q+2]-R.minz; pos[i*3+2]=-(p.v[q+1]-R.cy); } const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3)); const m=new THREE.Mesh(g,mat); m.renderOrder=6; m.userData.deco=true; partsGroup.add(m); }
   partsGroup.position.set(S.posX,-((U&&U.grade)||0),-S.posY); partsGroup.rotation.y=S.rotDeg*Math.PI/180; LAB.requestRender(); }
+/* exploded preview of the uploaded model during the parts review: the site, the studied massing and the overlays are hidden,
+   every piece is drawn in its part colour at its exploded offset; closing the review restores the view */
+let preview=null; const PREV_MAT={}; const DIM_MAT=new THREE.MeshLambertMaterial({color:new THREE.Color('#C9CED4'),transparent:true,opacity:0.18,depthWrite:false});
+function partMat(c){ if(!PREV_MAT[c]){ PREV_MAT[c]=new THREE.MeshLambertMaterial({color:new THREE.Color(c),side:THREE.DoubleSide}); } return PREV_MAT[c]; }
+function showExploded(items){ clearGroup(partsGroup); const R=LAB.uploadRaw, U=LAB.upload, S=LAB.S;
+  if(!items){ if(preview){ for(const [o,v] of preview.vis) o.visible=v; preview=null; syncGeometry(); } partsGroup.visible=false; LAB.requestRender(); return; }
+  if(!R) return; const first=!preview;
+  if(first){ preview={vis:[]}; for(const o of [LAB.siteGroup,lodGroup,dressGroup,advGroup,belowGroup,LAB.towerGroup,LAB.overlayGroup,LAB.waterGroup]){ if(o){ preview.vis.push([o,o.visible]); o.visible=false; } } }
+  partsGroup.visible=true;
+  const byMat=new Map(); for(const it of items){ const key=it.dim?'dim':it.color; let arr=byMat.get(key); if(!arr){ arr=[]; byMat.set(key,arr); } arr.push(it); }
+  for(const [key,list] of byMat){ let n=0; for(const it of list) n+=it.p.f.length; const pos=new Float32Array(n*3); let w=0;
+    for(const it of list){ const p=it.p, o=it.off; for(let i=0;i<p.f.length;i++){ const q=p.f[i]*3; pos[w++]=p.v[q]-R.cx+o.dx; pos[w++]=p.v[q+2]-R.minz+o.dz; pos[w++]=-(p.v[q+1]-R.cy+o.dy); } }
+    const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3)); g.computeVertexNormals(); const m=new THREE.Mesh(g,key==='dim'?DIM_MAT:partMat(key)); m.userData.deco=true; m.renderOrder=key==='dim'?7:6; partsGroup.add(m);
+    const edges=new THREE.LineSegments(new THREE.EdgesGeometry(g,30),new THREE.LineBasicMaterial({color:key==='dim'?0xB8BFC6:0x24303A,transparent:true,opacity:key==='dim'?0.25:0.55})); edges.userData.deco=true; partsGroup.add(edges); }
+  partsGroup.position.set(S.posX,-((U&&U.grade)||0),-S.posY); partsGroup.rotation.y=S.rotDeg*Math.PI/180;
+  if(first) framePreview(); LAB.requestRender(); }
+function framePreview(){ const b=new THREE.Box3().setFromObject(partsGroup); if(b.isEmpty()) return; const c=b.getCenter(new THREE.Vector3()), sz=b.getSize(new THREE.Vector3()); const o=LAB.orbit; o.target.copy(c); o.theta=0.75; o.phi=1.08; o.dist=Math.max(60,Math.max(sz.x,sz.y,sz.z)*1.6); LAB.requestRender(); }
 function applyModelWWR(w){ if(!SW||!w) return; for(const z of SW.zones){ const faces=z.face==='all'?['N','E','S','W']:[z.face]; const vals=faces.map(f=>w[f]).filter(v=>v!=null); if(vals.length) z.wwr=Math.max(0.1,Math.min(0.95,+(vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2))); } persist(); try{ syncZoneUI(); }catch(e){} markStaleAll(); }
 function markStaleAll(){ if(sunResult) stale.sun=true; if(windResult) stale.wind=true; showStale(); }
 function buildAdv(){
@@ -1216,7 +1233,7 @@ window.addEventListener('keydown',e=>{ if(!massSel) return; const t=e.target; if
 LAB.hooks.afterUpdate.push(()=>{ if(massSel) refreshMassSel(); });
 LAB.sim={init(){ initState(); buildUI(); placeControls(); syncGeometry(); updateGeomInfo(); renderSky(); applySunView(); if(LAB.S.impact.mode!=='sun'&&LAB.S.impact.mode!=='wind') setMode('sun'); else runCurrent(false); rerender();
     setTimeout(()=>autoRun(0),900); },
-  showParts, applyModelWWR, sunPos, runCurrent, runSunStudy, runWindStudy, setMode, setStudioMode, reportData, periodInfo, roseFor, DATES, STRATS, solarStudy, ventStudy, terraceWind, windProfile, zoneFor, zoneGlazing, energyChanged, exposurePass, setOverlay, dni, terrainDEM, towerRaster, plazaCellsAt, buildSiteRaster:()=>{ if(!siteRaster) buildSiteRaster(); return siteRaster; }, DOM,
+  showParts, showExploded, framePreview, applyModelWWR, sunPos, runCurrent, runSunStudy, runWindStudy, setMode, setStudioMode, reportData, periodInfo, roseFor, DATES, STRATS, solarStudy, ventStudy, terraceWind, windProfile, zoneFor, zoneGlazing, energyChanged, exposurePass, setOverlay, dni, terrainDEM, towerRaster, plazaCellsAt, buildSiteRaster:()=>{ if(!siteRaster) buildSiteRaster(); return siteRaster; }, DOM,
   markStale(kind){ stale[kind]=true; showStale(); }, rerenderRain:renderRain, afterImport(){ if(!SW) return; updateGeomInfo(); if(adv()) setTimeout(maybeSliceDialog,0); },
   get windResult(){return windResult;}, get sunResult(){return sunResult;}, get SW(){return SW;}};
 })();
