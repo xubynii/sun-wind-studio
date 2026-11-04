@@ -247,10 +247,10 @@ function placeOrtho(){ const o=LAB.orbit, pc=LAB.camera; const t=o.target; const
   const axes=()=>{ const o=LAB.orbit; return o.phi<0.05?{r:new THREE.Vector3(1,0,0),u:new THREE.Vector3(0,0,-1)}:{r:new THREE.Vector3(Math.cos(o.theta),0,-Math.sin(o.theta)),u:new THREE.Vector3(0,1,0)}; };
   el.addEventListener('pointerdown',e=>{ live.add(e.pointerId); last={x:e.clientX,y:e.clientY}; },true);
   const done=e=>{ live.delete(e.pointerId); if(!live.size) last=null; }; el.addEventListener('pointerup',done,true); el.addEventListener('pointercancel',done,true);
-  el.addEventListener('pointermove',e=>{ if(!view.ortho||!e.buttons||live.size!==1||!last||drag||clipDrag||secDrag) return; if(e.target.closest&&e.target.closest('.viewtools,.clip-panel,.keyplan,.abar,.mass-hint')) return;
+  el.addEventListener('pointermove',e=>{ if(!view.ortho||!e.buttons||live.size!==1||!last||drag||clipDrag||secDrag||floorSel) return; if(e.target.closest&&e.target.closest('.viewtools,.clip-panel,.keyplan,.secprog,.abar,.mass-hint')) return;
     e.stopImmediatePropagation(); const o=LAB.orbit, H=LAB.renderer.domElement.clientHeight||1; const hh=o.dist*Math.tan(LAB.camera.fov*Math.PI/360), k=2*hh/H; const A=axes();
     o.target.addScaledVector(A.r,-(e.clientX-last.x)*k).addScaledVector(A.u,(e.clientY-last.y)*k); last={x:e.clientX,y:e.clientY}; LAB.requestRender(); },true);
-  el.addEventListener('wheel',e=>{ if(!view.ortho||(e.target.closest&&e.target.closest('.keyplan,.clip-panel'))) return; e.preventDefault(); e.stopImmediatePropagation(); const o=LAB.orbit, c=LAB.renderer.domElement, rc=c.getBoundingClientRect();
+  el.addEventListener('wheel',e=>{ if(!view.ortho||(e.target.closest&&e.target.closest('.keyplan,.secprog,.clip-panel'))) return; e.preventDefault(); e.stopImmediatePropagation(); const o=LAB.orbit, c=LAB.renderer.domElement, rc=c.getBoundingClientRect();
     const nd=Math.min(3000,Math.max(15,o.dist*(1+e.deltaY*0.0012))), f=nd/o.dist; const hh=o.dist*Math.tan(LAB.camera.fov*Math.PI/360), hw=hh*LAB.camera.aspect;
     const ux=(((e.clientX-rc.left)/rc.width)*2-1)*hw, uy=(-((e.clientY-rc.top)/rc.height)*2+1)*hh; const A=axes(); o.target.addScaledVector(A.r,ux*(1-f)).addScaledVector(A.u,uy*(1-f)); o.dist=nd; LAB.requestRender(); },{capture:true,passive:false});
 })();
@@ -293,7 +293,7 @@ function buildClipUI(){
   $('clip-close').addEventListener('click',()=>{ setClip({on:false}); if(view.section) setViewMode(true,false); });
   LAB.hooks.afterUpdate.push(()=>{ if(clip.on) syncClipUI(); });
   syncClipUI(); syncViewButtons(); }
-LAB.clip={get state(){return clip;}, set:setClip, view, setViewMode};
+LAB.clip={get state(){return clip;}, set:setClip, view, setViewMode, openSection:()=>openSection()}; LAB.persist=()=>persist();
 /* ---------- section and elevation drawings ----------
    Section: one view, square to the cut line set on the key plan. Over the orthographic render (washed back, so it reads as the
    building beyond), the cut is drawn as a section drawing: slabs, exterior walls, basement walls and core walls in solid poche,
@@ -322,7 +322,7 @@ function sectionCut(){ const G=secGeom(), F=LAB.floors||[], B=belowSorted(); con
 function el(tag,attrs,parent){ const e=document.createElementNS(NS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); if(parent) parent.appendChild(e); return e; }
 function sheetEls(){ let s=document.getElementById('sheet'); if(s) return s; const vp=$('viewport'); const w=document.createElement('div'); w.id='sheet-wash'; w.className='sheet-wash'; w.hidden=true; vp.insertBefore(w,vp.querySelector('.compass'));
   s=document.createElementNS(NS,'svg'); s.id='sheet'; s.setAttribute('class','sheet'); vp.insertBefore(s,vp.querySelector('.compass')); return s; }
-function hideSheet(){ const s=document.getElementById('sheet'); if(s) s.style.display='none'; const w=document.getElementById('sheet-wash'); if(w) w.hidden=true; const k=document.getElementById('keyplan'); if(k) k.hidden=true; const pp=document.getElementById('planpanel'); if(pp) pp.hidden=true; }
+function hideSheet(){ if(LAB.program) LAB.program.showBar(false); const s=document.getElementById('sheet'); if(s) s.style.display='none'; const w=document.getElementById('sheet-wash'); if(w) w.hidden=true; const k=document.getElementById('keyplan'); if(k) k.hidden=true; const pp=document.getElementById('planpanel'); if(pp) pp.hidden=true; }
 function scaleBar(svg,kx){ const ink='#1F2227';const m10=Math.abs(kx)*10; if(m10>8){ const bx=18, by=58; let n=10; while(Math.abs(kx)*n<60) n*=2; while(Math.abs(kx)*n>160&&n>2) n/=2; const L2=Math.abs(kx)*n; el('rect',{x:bx,y:by-10,width:L2+40,height:22,fill:'rgba(255,255,255,.85)'},svg); el('rect',{x:bx+4,y:by-3,width:L2/2,height:4,fill:ink},svg); el('rect',{x:bx+4+L2/2,y:by-3,width:L2/2,height:4,fill:'#fff',stroke:ink,'stroke-width':1},svg); const t=el('text',{x:bx+8+L2,y:by+2,fill:ink,'font-size':10,'font-family':'var(--font-m),monospace'},svg); t.textContent=n+' m'; } }
 function drawSheet(){ const o=LAB.orbit; const planOn=planActive()&&!clip.capturing; if(!view.ortho||clip.capturing||(o.phi<1.5&&!planOn)){ hideSheet(); if(view.ortho&&o.phi<0.05&&!clip.capturing) planPanelSync(); return; }
   const svg=sheetEls(), cv=LAB.renderer.domElement, vp=$('viewport'); const cr=cv.getBoundingClientRect(), vr=vp.getBoundingClientRect(); const W=cr.width, H=cr.height;
@@ -333,7 +333,8 @@ function drawSheet(){ const o=LAB.orbit; const planOn=planActive()&&!clip.captur
   const S=LAB.S, sec=view.section; let G, org, r;
   if(sec){ G=sectionCut().G; org=G.p0; r=G.r; } else { const th=o.theta; org={x:S.posX,y:S.posY}; r={x:Math.cos(th),y:Math.sin(th)}; }
   const P=(u,y)=>{ const v=new THREE.Vector3(org.x+r.x*u,y,-(org.y+r.y*u)).project(orthoCam); return [(v.x+1)/2*W,(1-v.y)/2*H]; };
-  const O=P(0,0), X=P(1,0), Y=P(0,1); const kx=X[0]-O[0], ky=Y[1]-O[1]; const sx=u=>O[0]+kx*u, sy=y=>O[1]+ky*y;
+  const O=P(0,0), X=P(1,0), Y=P(0,1); const kx=X[0]-O[0], ky=Y[1]-O[1]; const sx=u=>O[0]+kx*u, sy=y=>O[1]+ky*y; SHEET.sb=sec?{O,kx,ky}:null;
+  if(LAB.program) LAB.program.showBar(!!sec);
   const defs=el('defs',{},svg); const pat=el('pattern',{id:'earth-hatch',patternUnits:'userSpaceOnUse',width:9,height:9,patternTransform:'rotate(45)'},defs); el('rect',{width:9,height:9,fill:'#ECE4D5'},pat); el('line',{x1:0,y1:0,x2:0,y2:9,stroke:'#A8916C','stroke-width':1},pat);
   const gy=sy(0); el('rect',{x:0,y:gy,width:W,height:Math.max(0,H-gy),fill:'url(#earth-hatch)'},svg);
   const B=belowSorted(), F=LAB.floors||[]; const ink='#1F2227', pr=(a,b,y0,y1,fill,extra)=>{ const x0=sx(Math.min(a,b)), x1=sx(Math.max(a,b)), ya=sy(Math.max(y0,y1)), yb=sy(Math.min(y0,y1)); return el('rect',Object.assign({x:x0.toFixed(1),y:ya.toFixed(1),width:Math.max(0.6,x1-x0).toFixed(1),height:Math.max(0.6,yb-ya).toFixed(1),fill:fill||ink},extra||{}),svg); };
@@ -349,6 +350,9 @@ function drawSheet(){ const o=LAB.orbit; const planOn=planActive()&&!clip.captur
     const inCut=(q,u)=>q.cut.some(([a,b])=>u>a+0.3&&u<b-0.3); const thin={stroke:'#8A8F96','stroke-width':0.7};
     rows.forEach((q,k)=>{ const f=q.f, top=f.z+f.h, prev=rows[k-1], next=rows[k+1];
       for(const [a,b] of q.cut){ uMax=Math.max(uMax,b); uMin=Math.min(uMin,a); }
+      const PG=LAB.program, fkey=q.below?'b:'+f.bi:'a:'+f.i;
+      if(PG&&PG.hidden(fkey)){ for(const [a,b] of q.cut) pr(a,b,f.z,top,'#F3F3F1',{stroke:'#C9CED4','stroke-width':0.6,'stroke-dasharray':'3 2'}); return; }
+      if(PG&&PG.tint()){ const pk=q.below?(LAB.S.belowProg||{})[f.bi]:f.prog; if(pk) for(const [a,b] of q.cut) pr(a,b,f.z,top-T,PG.color(pk),{opacity:0.3}); }
       // columns: cut ones in poche, the nearest ones beyond in thin line
       { const CO=colsOf(f), cs=CO.cs; const seen=new Set(); for(const {x,y} of CO.cols){ const w=LAB.toWorld(f,x,y); const dx=w.x-G.p0.x, dy=w.y-G.p0.y; const sd=dx*G.L.x+dy*G.L.y, u=dx*G.r.x+dy*G.r.y; if(Math.abs(sd)<=cs/2+0.05) pr(u-cs/2,u+cs/2,f.z,top-T); else if(sd>0&&inCut(q,u)){ const key=Math.round(u*2); if(seen.has(key)) continue; seen.add(key); pr(u-cs/2,u+cs/2,f.z,top-T,'none',thin); } } }
       // slab over each storey, and under any part not standing on the storey below (the lowest one is the raft or ground slab)
@@ -386,6 +390,7 @@ function drawSheet(){ const o=LAB.orbit; const planOn=planActive()&&!clip.captur
         const t=el('text',{x:sx(mid).toFixed(1),y:(sy(f.z+(f.h-T)/2)+3).toFixed(1),'text-anchor':'middle','font-size':9,'letter-spacing':'0.05em',fill:'#5F646B','font-family':'var(--font-b),sans-serif',stroke:'#fff','stroke-width':3,'paint-order':'stroke'},svg); const bp2=q.below&&LAB.S.belowProg&&LAB.PROG[LAB.S.belowProg[f.bi]]; t.textContent=q.below?(bp2?bp2.name.toUpperCase():'BASEMENT'):((pr2&&pr2.name)||'FLOOR').toUpperCase(); }
     });
   }
+  if(sec&&uMax>-1e8&&LAB.program){ const {rows}=sectionCut(); for(const q of rows){ const k=q.below?'b:'+q.f.bi:'a:'+q.f.i; if(!LAB.program.isSel(k)) continue; for(const [a,b] of q.cut){ pr(a,b,q.f.z,q.f.z+q.f.h,'rgba(232,105,43,.10)',{stroke:'#E8692B','stroke-width':2.2}); } } }
   if(sec&&uMax>-1e8){ const {rows}=sectionCut(); const F0=F[0]; const zTop=F.length?F[F.length-1].z+F[F.length-1].h:0, zBot=B.length?Math.min(...B.map(f=>f.z))-0.8:-0.5;
     const dimH=(u0,u1,y,label)=>{ const a=[sx(u0),sy(y)], b=[sx(u1),sy(y)]; el('line',{x1:a[0].toFixed(1),y1:a[1].toFixed(1),x2:b[0].toFixed(1),y2:b[1].toFixed(1),stroke:ink,'stroke-width':0.6},svg); for(const p of [a,b]) el('line',{x1:(p[0]-3).toFixed(1),y1:(p[1]+3).toFixed(1),x2:(p[0]+3).toFixed(1),y2:(p[1]-3).toFixed(1),stroke:ink,'stroke-width':1},svg); if(Math.abs(b[0]-a[0])>34){ const t=el('text',{x:((a[0]+b[0])/2).toFixed(1),y:(a[1]-4).toFixed(1),'text-anchor':'middle','font-size':9.5,fill:ink,'font-family':'var(--font-m),monospace'},svg); t.textContent=label; } };
     const dimV=(u,y0,y1,label)=>{ const a=[sx(u),sy(y0)], b=[sx(u),sy(y1)]; el('line',{x1:a[0].toFixed(1),y1:a[1].toFixed(1),x2:b[0].toFixed(1),y2:b[1].toFixed(1),stroke:ink,'stroke-width':0.6},svg); for(const p of [a,b]) el('line',{x1:(p[0]-3).toFixed(1),y1:(p[1]+3).toFixed(1),x2:(p[0]+3).toFixed(1),y2:(p[1]-3).toFixed(1),stroke:ink,'stroke-width':1},svg); if(Math.abs(b[1]-a[1])>26){ const cx=a[0]-4, cy=(a[1]+b[1])/2; const t=el('text',{x:cx.toFixed(1),y:cy.toFixed(1),'text-anchor':'middle','font-size':9.5,fill:ink,'font-family':'var(--font-m),monospace',transform:`rotate(-90 ${cx.toFixed(1)} ${cy.toFixed(1)})`},svg); t.textContent=label; } };
@@ -613,7 +618,7 @@ function cutFromLine(A,B){ const dx=B.x-A.x, dy=B.y-A.y; if(Math.hypot(dx,dy)<2)
 function cutEdit(p,live){ Object.assign(clip,p,{kind:'v'}); if(view.section){ const o=LAB.orbit; o.theta=clip.ang+(clip.flip?Math.PI:0); o.phi=Math.PI/2; } if(!live) SHEET.key=null; LAB.requestRender(); }
 (function planSecEdit(){ const vp=document.getElementById('viewport');
   const toPlan=e=>{ const pb=SHEET.pb, cr=LAB.renderer.domElement.getBoundingClientRect(); if(!pb) return null; const sx=e.clientX-cr.left-pb.O[0], sy=e.clientY-cr.top-pb.O[1]; const det=pb.ax[0]*pb.ay[1]-pb.ax[1]*pb.ay[0]; if(Math.abs(det)<1e-9) return null; return {x:(sx*pb.ay[1]-sy*pb.ay[0])/det,y:(pb.ax[0]*sy-pb.ax[1]*sx)/det}; };
-  vp.addEventListener('pointerdown',e=>{ if(!planActive()||e.button!==0) return; if(e.target.closest&&e.target.closest('.viewtools,.clip-panel,.keyplan,.abar,.mass-hint')) return; const t=e.target.closest&&e.target.closest('[data-sec]'); const p=toPlan(e); if(!p) return;
+  vp.addEventListener('pointerdown',e=>{ if(!planActive()||e.button!==0) return; if(e.target.closest&&e.target.closest('.viewtools,.clip-panel,.keyplan,.secprog,.abar,.mass-hint')) return; const t=e.target.closest&&e.target.closest('[data-sec]'); const p=toPlan(e); if(!p) return;
     const colEl=e.target.closest&&e.target.closest('[data-col]'); if(colEl&&!PLAN.drawCut){ e.stopImmediatePropagation(); e.preventDefault(); vp.setPointerCapture(e.pointerId); secDrag={id:e.pointerId,part:'col',col:colEl.dataset.col,off:colEl.dataset.off||null,shift:e.shiftKey,x:e.clientX,y:e.clientY,moved:false}; return; }
     if(!t&&!PLAN.drawCut) return; e.stopImmediatePropagation(); e.preventDefault(); vp.setPointerCapture(e.pointerId);
     secDrag={id:e.pointerId,part:t?t.dataset.sec:'draw',a:p,b:null,x:e.clientX,y:e.clientY,moved:false}; },true);
@@ -631,6 +636,18 @@ function cutEdit(p,live){ Object.assign(clip,p,{kind:'v'}); if(view.section){ co
 })();
 function syncDrawBtn(){ const b=document.getElementById('pp-draw'); if(b){ b.setAttribute('aria-pressed',String(!!PLAN.drawCut)); b.textContent=PLAN.drawCut?'Drag across the plan…':'Draw a section cut'; } const v=document.getElementById('viewport'); if(v) v.classList.toggle('drawing-cut',!!PLAN.drawCut); }
 function openSection(){ setClip({on:true,kind:'v'}); SHEET.key=null; setViewMode(true,true,clip.ang+(clip.flip?Math.PI:0),Math.PI/2); }
+/* pick floors straight in the section: click one, drag over several, Shift-click a range, Ctrl-click to add; the program bar assigns */
+let floorSel=null;
+function secFloorAt(e){ const sb=SHEET.sb; if(!sb||!view.section) return null; const cr=LAB.renderer.domElement.getBoundingClientRect(); const px=e.clientX-cr.left, py=e.clientY-cr.top; const u=(px-sb.O[0])/sb.kx, y=(py-sb.O[1])/sb.ky;
+  const {rows}=sectionCut(); belowSorted(); for(const q of rows){ const f=q.f; if(y<f.z||y>=f.z+f.h) continue; if(!q.cut.some(([a,b])=>u>=a-0.6&&u<=b+0.6)) continue; return q.below?'b:'+f.bi:'a:'+f.i; } return null; }
+(function secFloorPick(){ const vp=document.getElementById('viewport');
+  vp.addEventListener('pointerdown',e=>{ if(!(view.ortho&&view.section)||e.button!==0||!LAB.program) return; if(e.target.closest&&e.target.closest('.viewtools,.clip-panel,.keyplan,.secprog,.abar,.mass-hint')) return; const k=secFloorAt(e); if(!k) return;
+    e.stopImmediatePropagation(); e.preventDefault(); vp.setPointerCapture(e.pointerId); const mode=e.shiftKey?'range':(e.ctrlKey||e.metaKey)?'toggle':'new'; floorSel={id:e.pointerId,anchor:k,mode,base:new Set(LAB.program.sel),x:e.clientX,y:e.clientY,moved:false}; LAB.program.pick(k,mode); },true);
+  vp.addEventListener('pointermove',e=>{ if(!floorSel||e.pointerId!==floorSel.id) return; e.stopImmediatePropagation(); if(!floorSel.moved&&Math.hypot(e.clientX-floorSel.x,e.clientY-floorSel.y)<5) return; floorSel.moved=true; const k=secFloorAt(e); if(k&&k!==floorSel.last){ floorSel.last=k; LAB.program.pickRange(floorSel.anchor,k,floorSel.mode!=='new',floorSel.base); } },true);
+  const end=e=>{ if(!floorSel||e.pointerId!==floorSel.id) return; floorSel=null; e.stopImmediatePropagation(); try{ vp.releasePointerCapture(e.pointerId); }catch(x){} };
+  vp.addEventListener('pointerup',end,true); vp.addEventListener('pointercancel',end,true);
+  vp.addEventListener('pointermove',e=>{ if(floorSel||e.buttons||!(view.ortho&&view.section)) return; const k=secFloorAt(e); vp.classList.toggle('floor-hover',!!k); });
+})();
 /* key plan: the cut line on a small plan of the parcel and the footprint; drag the line to move it, drag an end to turn it, click an arrow to look the other way */
 let kpDrag=null;
 function kpFrame(){ const S=LAB.S, F=LAB.floors||[]; let E=50; for(const f of F) E=Math.max(E,Math.hypot(f.w||0,f.d||0)*0.75+Math.hypot(f.cx-S.posX,f.cy-S.posY)); E=Math.max(E,Math.abs(clip.off)+12); return {cx:S.posX,cy:S.posY,E:Math.min(E,400),W:210}; }
@@ -1707,7 +1724,7 @@ function slideGroups(dx,dy){ const gs=[lodGroup,dressGroup,LAB.towerGroup,LAB.wa
   slideRest.gs.forEach((g,i)=>{ const p=slideRest.pos[i]; g.position.set(p.x+dx,p.y,p.z-dy); });
   if(!dx&&!dy) slideRest=null; LAB.requestRender(); }
 function hintText(dx,dy){ const S=LAB.S; const x=S.posX+(dx||0), y=S.posY+(dy||0); return `<b>Mass selected</b> · ${x>0?'+':''}${x} m E, ${y>0?'+':''}${y} m N · drag to move · arrows nudge 1 m, Shift 5 m · [ ] rotate · Esc`; }
-vpEl.addEventListener('pointerdown',e=>{ mDown=null; if(e.button!==0||e.target.closest('.viewtools,.clip-panel,.keyplan,.abar,.hud,.compass,.mass-hint')) return; mDown={x:e.clientX,y:e.clientY,b:e.button};
+vpEl.addEventListener('pointerdown',e=>{ mDown=null; if(e.button!==0||e.target.closest('.viewtools,.clip-panel,.keyplan,.secprog,.abar,.hud,.compass,.mass-hint')) return; mDown={x:e.clientX,y:e.clientY,b:e.button};
   if(massAt(e)){ const g=groundPoint(e); if(g){ e.stopImmediatePropagation(); vpEl.setPointerCapture(e.pointerId); drag={id:e.pointerId,ox:LAB.S.posX-g.x,oy:LAB.S.posY-g.y,dx:0,dy:0,moved:false}; if(!massSel){ massSel=true; refreshMassSel(); } vpEl.style.cursor='grabbing'; } } },true);
 vpEl.addEventListener('pointermove',e=>{ if(drag){ if(e.pointerId!==drag.id) return; const g=groundPoint(e); if(!g) return; const P=LAB.PARAMS, S=LAB.S; const snap=e.altKey?0.1:1; let nx=Math.round((g.x+drag.ox)/snap)*snap, ny=Math.round((g.y+drag.oy)/snap)*snap; nx=Math.max(P.posX.min,Math.min(P.posX.max,nx)); ny=Math.max(P.posY.min,Math.min(P.posY.max,ny)); drag.dx=+(nx-S.posX).toFixed(1); drag.dy=+(ny-S.posY).toFixed(1); drag.moved=drag.moved||Math.hypot(e.clientX-mDown.x,e.clientY-mDown.y)>3; slideGroups(drag.dx,drag.dy); $('mass-hint').innerHTML=hintText(drag.dx,drag.dy); return; }
   if(e.buttons) return; vpEl.style.cursor=massAt(e)?'grab':''; });
