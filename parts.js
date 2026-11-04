@@ -37,7 +37,7 @@ function byGeometry(I,ctx){
 }
 function classify(){ const S=state; S.ctx.all=S.info; S.cat=S.info.map((I,i)=>{ if(S.pieceChoice&&S.pieceChoice[i]) return S.pieceChoice[i]; const L=S.pieces[i].layerName||'model'; const ch=S.layerChoice[L]; if(ch&&ch!=='auto') return ch; return byKeyword(L)||byGeometry(I,S.ctx); }); summarise(); }
 function summarise(){ const S=state; const by={}; for(const c of CATS) by[c[0]]=[]; S.cat.forEach((c,i)=>by[c].push(i)); S.by=by;
-  const plates=by.floor.map(i=>S.info[i]); const zs=plates.map(I=>I.z1).sort((a,b)=>a-b); const lv=[]; for(const z of zs){ if(!lv.length||z-lv[lv.length-1]>1.0) lv.push(z); } S.levels=lv;
+  const plates=by.floor.concat(by.ground||[]).map(i=>S.info[i]); const zs=plates.map(I=>I.z1).sort((a,b)=>a-b); const lv=[]; for(const z of zs){ if(!lv.length||z-lv[lv.length-1]>1.0) lv.push(z); } S.levels=lv;
   const gaps=[]; for(let i=1;i<lv.length;i++) gaps.push(lv[i]-lv[i-1]); gaps.sort((a,b)=>a-b); S.typical=gaps.length?gaps[Math.floor(gaps.length/2)]:0;
   if(S.groundZ==null){ const g=lv.length?lv.reduce((a,z)=>Math.abs(z)<Math.abs(a)?z:a,lv[0]):0; S.groundZ=Math.abs(g)<1.5?+g.toFixed(2):(S.ctx.minz<-0.3?0:+S.ctx.minz.toFixed(2)); }
   const sum=(list,k)=>list.reduce((a,i)=>a+S.info[i][k],0); const faceSum=(list)=>{ const o={N:0,E:0,S:0,W:0}; for(const i of list) for(const k in o) o[k]+=S.info[i].face[k]; return o; };
@@ -111,6 +111,7 @@ function stepHTML(S){ const st=steps(S); if(!st.length) return '<p class="empty"
   <p class="ps">${ids.length} piece${ids.length===1?'':'s'} on ${Object.keys(layers).length} layer${Object.keys(layers).length===1?'':'s'}: ${Object.entries(layers).map(([L,n])=>`<b>${esc(L)}</b>${n>1?' ×'+n:''}`).join(', ')}</p>
   ${k==='mass'||k==='other'?`<p class="ps">${k==='mass'?'Closed volumes that are none of the above; they form the solid massing.':'Small pieces the scan could not place; they are left out.'}</p>`:`<div class="pd-q"><span>Is this right?</span><button type="button" class="btn ${ans===true?'primary':''}" id="pt-yes">Yes</button><button type="button" class="btn ${ans===false?'primary':''}" id="pt-no">No</button></div>`}
   ${S.fix===k?`<div class="pd-fix"><p class="ps">Change what these layers are, or mark the part as not in this model.</p>${Object.keys(layers).map(L=>`<label class="lvl">${esc(L)} <select data-layer="${L.replace(/"/g,'&quot;')}"><option value="auto"${(S.layerChoice[L]||'auto')==='auto'?' selected':''}>As scanned</option>${CATS.map(c=>`<option value="${c[0]}"${S.layerChoice[L]===c[0]?' selected':''}>${c[1]}</option>`).join('')}</select></label>`).join('')}<button type="button" class="btn small" id="pt-none-here">Not in this model</button></div>`:''}
+  ${ids.length&&k!=='ground'?`<div class="pd-all"><span>Label all ${ids.length} as</span><select id="pt-alllabel" aria-label="New label for all ${ids.length} ${esc(NAME[k])} pieces">${CATS.filter(c=>c[0]!==k).map(c=>`<option value="${c[0]}">${c[1]}</option>`).join('')}</select><button type="button" class="btn small" id="pt-allapply">Apply to the group</button></div>`:''}
   <div class="pd-nav"><button type="button" class="btn small" id="pt-prev" ${idx<=0?'disabled':''}>← Previous</button><button type="button" class="btn small" id="pt-next" ${idx>=st.length-1?'disabled':''}>Next →</button></div>`; }
 function render(){ const S=state; const card=$('parts-dialog'); if(!card) return; const st=steps(S); if(!S.cur||!st.includes(S.cur)) S.cur=st[0];
   const dots=st.map(k=>{ const a=S.confirmed[k]; return `<button type="button" class="pd-dot${k===S.cur&&!S.showLayer?' on':''}" data-step="${k}" title="${NAME[k]}"><span class="sw" style="background:${COL[k]}"></span>${NAME[k]}<i>${a===true?'✓':(a===false?'✕':'')}</i></button>`; }).join('');
@@ -132,6 +133,8 @@ function render(){ const S=state; const card=$('parts-dialog'); if(!card) return
   const n=q('#pt-no'); if(n) n.onclick=()=>{ S.fix=S.fix===S.cur?null:S.cur; render(); };
   const nh=q('#pt-none-here'); if(nh) nh.onclick=()=>{ S.confirmed[S.cur]=false; S.fix=null; go(1); render(); };
   const setGround=i=>{ S.groundZ=+S.info[i].z1.toFixed(2); if(S.cat[i]!=='floor') S.pieceChoice[i]='floor'; classify(); S.cur='ground'; S.confirmed.ground=true; S.sel.clear(); S.showLayer=null; render(); };
+  // the whole group of the current step takes another label in one go
+  const aa=q('#pt-allapply'); if(aa) aa.onclick=()=>{ const v=q('#pt-alllabel').value, k=S.cur, ids=idsOf(S,k); if(!ids.length) return; if(v==='ground'){ setGround(ids.reduce((a,i)=>S.info[i].z1<S.info[a].z1?i:a,ids[0])); return; } for(const i of ids) S.pieceChoice[i]=v; classify(); S.confirmed[v]=true; S.cur=v==='other'?S.cur:v; S.showLayer=null; S.sel.clear(); render(); };
   const sa=q('#pt-selapply'); if(sa) sa.onclick=()=>{ const v=q('#pt-sellabel').value; const ids=[...S.sel]; if(v==='ground'){ setGround(ids.reduce((a,i)=>S.info[i].z1<S.info[a].z1?i:a,ids[0])); return; } for(const i of ids) S.pieceChoice[i]=v; classify(); S.cur=v==='other'?S.cur:v; S.showLayer=null; S.sel.clear(); render(); };
   const sg=q('#pt-selground'); if(sg) sg.onclick=()=>setGround([...S.sel][0]);
   card.querySelectorAll('[data-glevel]').forEach(b=>b.onclick=()=>{ S.groundZ=+S.levels[+b.dataset.glevel].toFixed(2); S.confirmed.ground=true; render(); });
@@ -180,7 +183,7 @@ function openingsToLevels(U,S,winIds,ceilIds){ if(!U.levels) return; const L=U.l
 
 function apply(){ const S=state; const ok=k=>S.confirmed[k]!==false&&S.by[k]&&S.by[k].length>0; const io=LAB.io; const U0=LAB.upload; if(!U0){ close(); return; }
   const keepOut=new Set(['structure','stair','other']); if(ok('window')) keepOut.add('window'); if(ok('facade')) keepOut.add('facade'); if(ok('ceiling')) keepOut.add('ceiling');
-  const solids=S.pieces.filter((p,i)=>!keepOut.has(S.cat[i])); const plates=ok('floor')?S.by.floor.concat(ok('roof')?S.by.roof:[]).map(i=>S.pieces[i]):null;
+  const solids=S.pieces.filter((p,i)=>!keepOut.has(S.cat[i])); const plates=ok('floor')?S.by.floor.concat(S.by.ground||[],ok('roof')?S.by.roof:[]).map(i=>S.pieces[i]):null;
   let U; try{ U=io.voxelize(solids.length?solids:S.pieces,S.all,plates); }catch(e){ U=io.voxelize(S.pieces,S.all,plates); }
   if(plates&&plates.length){ U.srcMeshes=plates; Object.assign(U,io.detectLevels(plates,U.minz,U.top,U.footprint,U)); if(U.levels){ U.useLevels=true; U.fromParts=true; io.platesToLevels(U,plates); S.openInfo=openingsToLevels(U,S,ok('window')?S.by.window:[],ok('ceiling')?S.by.ceiling:[]); } }
   U.grade=Math.max(0,Math.min(U.top-2.4,S.groundZ-U.minz)); LAB.upload=U; const St=LAB.S; St.height=Math.round(U.top-U.grade); const placed=S.confirmed.ground!==false?placeOnSite(S,U):null;

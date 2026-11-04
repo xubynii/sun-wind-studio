@@ -170,6 +170,25 @@ function detectLevels(meshes,minz,top,footprint,U){ U=U||LAB.upload; const over=
 function rasterPiece(p,cx,cy,x0,y0,nx,ny,fn){ const v=p.v; for(let i=0;i<p.f.length;i+=3){ const a=p.f[i]*3,b=p.f[i+1]*3,c=p.f[i+2]*3; const ax=v[a]-cx,ay=v[a+1]-cy,bx=v[b]-cx,by=v[b+1]-cy,qx=v[c]-cx,qy=v[c+1]-cy; const det=(bx-ax)*(qy-ay)-(qx-ax)*(by-ay); if(Math.abs(det)<1e-7) continue;
     const ix0=Math.max(0,Math.floor(Math.min(ax,bx,qx)-x0)), ix1=Math.min(nx-1,Math.floor(Math.max(ax,bx,qx)-x0)), iy0=Math.max(0,Math.floor(Math.min(ay,by,qy)-y0)), iy1=Math.min(ny-1,Math.floor(Math.max(ay,by,qy)-y0));
     for(let iy=iy0;iy<=iy1;iy++){ const py=y0+iy+0.5; for(let ix=ix0;ix<=ix1;ix++){ const px=x0+ix+0.5; const l1=((bx-px)*(qy-py)-(qx-px)*(by-py))/det, l2=((qx-px)*(ay-py)-(ax-px)*(qy-py))/det; if(l1>=-1e-6&&l2>=-1e-6&&1-l1-l2>=-1e-6) fn(iy*nx+ix); } } } }
+/* the envelope of a storey: the checked façade, window, massing and core pieces cut at a height, drawn onto the grid as walls,
+   and everything the walls enclose (a flood from the grid edge cannot reach it). Gaps under about 2 m, such as doors, are closed. */
+function envelopeCells(U,zm){ const P=LAB.modelParts, R=LAB.uploadRaw; if(!P||!P.pieces||!R||P.rawVersion!==R.version) return null;
+  // worked on a half-metre grid, then read back to the 1 m study grid: a cell counts when three of its four quarters are inside
+  const Q=2, M=6, nx=U.nx*Q+2*M, ny=U.ny*Q+2*M, wall=new Uint8Array(nx*ny); let any=false; // M: a margin so the outside flood always has room
+  const mark=(x,y)=>{ const ix=Math.floor((x-U.cx-U.x0)*Q)+M, iy=Math.floor((y-U.cy-U.y0)*Q)+M; if(ix>=0&&iy>=0&&ix<nx&&iy<ny){ wall[iy*nx+ix]=1; any=true; } };
+  for(const p of P.pieces){ if(!/^(facade|window|mass|core|structure)$/.test(p.cat)) continue; if(p.ez0==null){ let a=1e9,b=-1e9; for(const i of p.f){ const z=p.v[i*3+2]; if(z<a)a=z; if(z>b)b=z; } p.ez0=a; p.ez1=b; } if(zm<=p.ez0||zm>=p.ez1) continue;
+    for(let t=0;t<p.f.length;t+=3){ const q=[p.f[t],p.f[t+1],p.f[t+2]].map(i=>[p.v[i*3],p.v[i*3+1],p.v[i*3+2]+1e-5]); const pts=[];
+      for(const [A,B] of [[q[0],q[1]],[q[1],q[2]],[q[2],q[0]]]){ if((A[2]-zm)*(B[2]-zm)<0){ const k=(zm-A[2])/(B[2]-A[2]); pts.push([A[0]+(B[0]-A[0])*k,A[1]+(B[1]-A[1])*k]); } }
+      if(pts.length===2){ const [a,b]=pts, L=Math.hypot(b[0]-a[0],b[1]-a[1]), n=Math.max(1,Math.ceil(L/0.1)); for(let i=0;i<=n;i++) mark(a[0]+(b[0]-a[0])*i/n,a[1]+(b[1]-a[1])*i/n); } } }
+  if(!any) return null;
+  // close gaps up to about 2 m (doors, joints) by growing the walls 1 m, flood the outside, then peel the growth back off
+  let dil=new Uint8Array(wall); for(let r=0;r<2;r++){ const d2=new Uint8Array(dil); for(let k=0;k<nx*ny;k++){ if(!dil[k]) continue; const ix=k%nx, iy=(k/nx)|0; if(ix>0) d2[k-1]=1; if(ix<nx-1) d2[k+1]=1; if(iy>0) d2[k-nx]=1; if(iy<ny-1) d2[k+nx]=1; } dil=d2; }
+  const out=new Uint8Array(nx*ny), st=[]; const push=k=>{ if(!out[k]&&!dil[k]){ out[k]=1; st.push(k); } };
+  for(let ix=0;ix<nx;ix++){ push(ix); push((ny-1)*nx+ix); } for(let iy=0;iy<ny;iy++){ push(iy*nx); push(iy*nx+nx-1); }
+  while(st.length){ const k=st.pop(), ix=k%nx, iy=(k/nx)|0; if(ix>0) push(k-1); if(ix<nx-1) push(k+1); if(iy>0) push(k-nx); if(iy<ny-1) push(k+nx); }
+  for(let r=0;r<2;r++){ const peel=[]; for(let k=0;k<nx*ny;k++){ if(out[k]||wall[k]||!dil[k]) continue; const ix=k%nx, iy=(k/nx)|0; if((ix>0&&out[k-1])||(ix<nx-1&&out[k+1])||(iy>0&&out[k-nx])||(iy<ny-1&&out[k+nx])) peel.push(k); } for(const k of peel) out[k]=1; }
+  const res=new Set(); for(let iy=0;iy<U.ny;iy++) for(let ix=0;ix<U.nx;ix++){ let n=0; for(let a=0;a<Q;a++) for(let b=0;b<Q;b++) if(!out[(iy*Q+a+M)*nx+ix*Q+b+M]) n++; if(n>=3) res.add(iy*U.nx+ix); }
+  return res; }
 /* confirmed plates give each level its own outline: a plate counts for the level nearest its top within 0.6 m */
 function platesToLevels(U,plates){ if(!U.levels) return; U.plateCells=U.levels.map(()=>new Set()); for(const p of plates){ let zt=-1e9; for(let i=2;i<p.v.length;i+=3){} for(let i=0;i<p.f.length;i++){ const z=p.v[p.f[i]*3+2]; if(z>zt) zt=z; } zt-=U.minz; let best=-1, bd=0.6; U.levels.forEach((z,li)=>{ const d=Math.abs(z-zt); if(d<bd){ bd=d; best=li; } }); if(best<0) continue; const set=U.plateCells[best]; rasterPiece(p,U.cx,U.cy,U.x0,U.y0,U.nx,U.ny,k=>set.add(k)); } }
 /* re-run the plate scan on an uploaded model (the Design development slice step asks for it before slicing) */
@@ -187,7 +206,9 @@ LAB.uploadFloors=function(S){
   const out=[], below=[];
   for(const sl of slabs){ const {z0,h,probes}=sl; const under=z0+h<=g+0.3; if(!under&&z0>=top-0.5) continue;
     let bx0=1e9,bx1=-1e9,by0=1e9,by1=-1e9; const cells=[];
-    const pc=sl.li!=null&&U.plateCells?U.plateCells[sl.li]:null;
+    let pc=sl.li!=null&&U.plateCells?U.plateCells[sl.li]:null;
+    // a storey whose plate is missing or covers less than half of what its walls enclose takes its outline from the envelope too
+    if(U.fromParts){ const env=envelopeCells(U,U.minz+z0+Math.min(1.2,h*0.4)); if(env&&env.size&&(!pc||pc.size<0.5*env.size)){ const m=new Set(pc||[]); for(const k of env) m.add(k); pc=m; } }
     for(let iy=0;iy<U.ny;iy++) for(let ix=0;ix<U.nx;ix++){ const iv=U.ints[iy*U.nx+ix]; let inside=!!(pc&&pc.has(iy*U.nx+ix)); for(const p of iv){ for(const q of probes){ if(q>=p[0]&&q<=p[1]){ inside=true; break; } } if(inside) break; } if(inside){ cells.push(ix,iy); if(ix<bx0)bx0=ix; if(ix>bx1)bx1=ix; if(iy<by0)by0=iy; if(iy>by1)by1=iy; } }
     if(!cells.length) continue;
     const nx=bx1-bx0+1, ny=by1-by0+1, w=nx, d=ny, ux=U.x0+bx0+w/2, uy=U.y0+by0+d/2;
