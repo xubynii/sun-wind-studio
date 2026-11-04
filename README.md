@@ -72,6 +72,12 @@ Settings persist in the browser's local storage per device.
   - glazing as thin lines between each storey's sill and head, from its facade zone;
   - basements cut into hatched earth;
   - level datums and a scale bar.
+- **Floor plans.** Plan opens the ground floor as a plan drawing cut 1.2 m above the finished floor. The level list, or the up and down arrows, steps through every floor and basement, and Site gives the roof plan. The drawing follows North American and ISO 128 conventions:
+  - **Cut elements.** Exterior and basement walls, columns, core walls and fins are solid poche with the heaviest line. Curtain wall shows as frame lines with the glass between them and mullions every 1.5 m. Punched windows are openings in a solid wall.
+  - **Below and above the cut.** Items below the cut, such as the floor below, balcony slabs and louvres, are thin solid lines. Items above it, such as the floor above, overhangs and light shelves, are dashed.
+  - **Core.** The core has a lift bank with lobby openings and two stairs with treads, break line, UP arrow and door swings.
+  - **Annotation.** Each plan has a structural grid with numbered and lettered bubbles, chained and overall dimensions, and a room tag with the gross area. It also shows the A-A section line with its arrows, the property line on the levels above ground, a north arrow and a scale bar. Basements sit in hatched earth.
+  - **Uploaded models.** The checked structure, core, stairs, façade and windows are cut from the model itself at the plan height. Parts that are not modeled are drawn from the floor plate, the façade zones and the core size. The columns follow an indicative grid of about 9 m.
 - **Clip.** A clipping plane like Rhino's. It can be vertical, for sections, or horizontal, for plan cuts at any height including below grade. Set its turn and position in the panel, or drag the orange handle in 3D. Flip side keeps the other half, and Look at the section opens the orthographic view of the cut.
 - **Cut display.** While the plane is on, the ground becomes a block of earth and cut solids show a flat fill: dark for the building, tan for the earth, brown for basements. Section always frames the basements.
 - **Import.** Choosing a model file goes straight to the model check: layers take their guessed roles. Change layer roles reopens the role table and Re-import applies it. Only a file with no massing layer stops at the table.
