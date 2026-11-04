@@ -218,6 +218,11 @@ function capMaterial(m){ if(!m||m.userData.capped||m.side!==THREE.DoubleSide||!(
   m.onBeforeCompile=(sh,r)=>{ if(prev) prev.call(m,sh,r); sh.uniforms.uCap=CAP; sh.uniforms.uCapCol=col; sh.fragmentShader='uniform float uCap;\nuniform vec3 uCapCol;\n'+sh.fragmentShader.replace(/\}\s*$/,'\tif(uCap>0.5&&!gl_FrontFacing) gl_FragColor=vec4(uCapCol,1.0);\n}'); };
   m.customProgramCacheKey=()=>'cap'; m.needsUpdate=true; }
 function capScene(sc){ sc.traverse(o=>{ if(!o.isMesh||!o.visible||(o.userData&&o.userData.deco&&o!==earth)) return; const ms=Array.isArray(o.material)?o.material:[o.material]; for(const m of ms) capMaterial(m); }); }
+/* an elevation shows the building itself: anything between the viewer and the tower's nearest face is cut away */
+const ELEV={key:null,front:0}; const elevClip=new THREE.Plane();
+function elevPlane(){ const S=LAB.S, th=LAB.orbit.theta, d={x:Math.sin(th),y:-Math.cos(th)}; const F=(LAB.floors||[]).concat(LAB.belowFloors||[]); const key=[F.length&&F[0],F.length,th,S.posX,S.posY,S.rotDeg].join('|');
+  if(ELEV.key!==key){ let fr=-1e9; for(const f of F){ const m=f.mask; if(!m) continue; for(const [ix,iy] of [[0,0],[m.nx,0],[0,m.ny],[m.nx,m.ny]]){ const p=LAB.toWorld(f,m.x0+ix,m.y0+iy); fr=Math.max(fr,(p.x-S.posX)*d.x+(p.y-S.posY)*d.y); } } ELEV.key=key; ELEV.front=fr>-1e8?fr:30; }
+  const n=new THREE.Vector3(-d.x,0,d.y), pt=new THREE.Vector3(S.posX+d.x*(ELEV.front+1.5),0,-(S.posY+d.y*(ELEV.front+1.5))); return elevClip.setFromNormalAndCoplanarPoint(n,pt); }
 /* the orthographic camera is placed square to the view: straight down for the plan (north up), level for elevations and sections */
 function placeOrtho(){ const o=LAB.orbit, pc=LAB.camera; const t=o.target; const far=6000;
   if(o.phi<0.05){ orthoCam.up.set(0,0,-1); orthoCam.position.set(t.x,t.y+far,t.z); }
@@ -229,8 +234,10 @@ function placeOrtho(){ const o=LAB.orbit, pc=LAB.camera; const t=o.target; const
     placeClipWidget(!view.ortho&&!clip.capturing);
     if(clip.on) capScene(sc); CAP.value=clip.on?1:0;
     R.clippingPlanes=clip.on?[updateClipPlane()]:NOCLIP;
-    if(view.ortho){ placeOrtho(); return orig(sc,orthoCam); }
-    return orig(sc,cam); };
+    if(view.ortho&&!view.section&&LAB.orbit.phi>1.5&&!clip.capturing) R.clippingPlanes=[elevPlane()];
+    if(view.ortho){ placeOrtho(); const up=LAB.orbit.phi>1.5&&!clip.capturing; let bv=true; if(up){ earth.visible=false; bv=belowGroup.visible; belowGroup.visible=false; if(view.section) CAP.value=0; }
+      const res=orig(sc,orthoCam); if(up) belowGroup.visible=bv; drawSheet(); return res; }
+    hideSheet(); return orig(sc,cam); };
   const origCap=LAB.captureView; LAB.captureView=function(opts){ const s={o:view.ortho,c:clip.on}; view.ortho=!!(opts&&opts.plan); clip.on=false; clip.capturing=true; try{ return origCap(opts); } finally{ view.ortho=s.o; clip.on=s.c; clip.capturing=false; LAB.requestRender(); } };
   LAB.pickCamera=()=>view.ortho?orthoCam:null;
 })();
@@ -239,10 +246,10 @@ function placeOrtho(){ const o=LAB.orbit, pc=LAB.camera; const t=o.target; const
   const axes=()=>{ const o=LAB.orbit; return o.phi<0.05?{r:new THREE.Vector3(1,0,0),u:new THREE.Vector3(0,0,-1)}:{r:new THREE.Vector3(Math.cos(o.theta),0,-Math.sin(o.theta)),u:new THREE.Vector3(0,1,0)}; };
   el.addEventListener('pointerdown',e=>{ live.add(e.pointerId); last={x:e.clientX,y:e.clientY}; },true);
   const done=e=>{ live.delete(e.pointerId); if(!live.size) last=null; }; el.addEventListener('pointerup',done,true); el.addEventListener('pointercancel',done,true);
-  el.addEventListener('pointermove',e=>{ if(!view.ortho||!e.buttons||live.size!==1||!last||drag||clipDrag) return; if(e.target.closest&&e.target.closest('.viewtools,.clip-panel,.abar,.mass-hint')) return;
+  el.addEventListener('pointermove',e=>{ if(!view.ortho||!e.buttons||live.size!==1||!last||drag||clipDrag) return; if(e.target.closest&&e.target.closest('.viewtools,.clip-panel,.keyplan,.abar,.mass-hint')) return;
     e.stopImmediatePropagation(); const o=LAB.orbit, H=LAB.renderer.domElement.clientHeight||1; const hh=o.dist*Math.tan(LAB.camera.fov*Math.PI/360), k=2*hh/H; const A=axes();
     o.target.addScaledVector(A.r,-(e.clientX-last.x)*k).addScaledVector(A.u,(e.clientY-last.y)*k); last={x:e.clientX,y:e.clientY}; LAB.requestRender(); },true);
-  el.addEventListener('wheel',e=>{ if(!view.ortho) return; e.preventDefault(); e.stopImmediatePropagation(); const o=LAB.orbit, c=LAB.renderer.domElement, rc=c.getBoundingClientRect();
+  el.addEventListener('wheel',e=>{ if(!view.ortho||(e.target.closest&&e.target.closest('.keyplan,.clip-panel'))) return; e.preventDefault(); e.stopImmediatePropagation(); const o=LAB.orbit, c=LAB.renderer.domElement, rc=c.getBoundingClientRect();
     const nd=Math.min(3000,Math.max(15,o.dist*(1+e.deltaY*0.0012))), f=nd/o.dist; const hh=o.dist*Math.tan(LAB.camera.fov*Math.PI/360), hw=hh*LAB.camera.aspect;
     const ux=(((e.clientX-rc.left)/rc.width)*2-1)*hw, uy=(-((e.clientY-rc.top)/rc.height)*2+1)*hh; const A=axes(); o.target.addScaledVector(A.r,ux*(1-f)).addScaledVector(A.u,uy*(1-f)); o.dist=nd; LAB.requestRender(); },{capture:true,passive:false});
 })();
@@ -262,7 +269,7 @@ function clipRange(){ const S=LAB.S; if(clip.kind==='h') return {min:-(Math.ceil
   const R=Math.ceil(Math.max(60,Math.sqrt(LAB.upload&&LAB.upload.footprint||3000)*1.3)); return {min:-R,max:R,step:0.1}; }
 function setClipPos(v,snap){ const r=clipRange(); v=Math.max(r.min,Math.min(r.max,snap?Math.round(v*2)/2:Math.round(v*10)/10)); if(clip.kind==='v') clip.off=v; else clip.h=v; syncClipUI(); LAB.requestRender(); }
 function setClip(patch){ Object.assign(clip,patch); syncClipUI(); syncViewButtons(); LAB.requestRender(); }
-function syncClipUI(){ const P=$('clip-panel'); if(!P) return; P.hidden=!clip.on; $('view-clip').setAttribute('aria-pressed',String(clip.on)); if(!clip.on) return;
+function syncClipUI(){ const P=$('clip-panel'); if(!P) return; P.hidden=!clip.on||view.section; $('view-clip').setAttribute('aria-pressed',String(clip.on)); if(!clip.on) return;
   P.querySelectorAll('[data-ck]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.ck===clip.kind)));
   const r=clipRange(), v=clip.kind==='v'?clip.off:clip.h, s=$('clip-pos'); s.min=r.min; s.max=r.max; s.step=r.step; s.value=v;
   $('clip-pos-l').textContent=clip.kind==='v'?'Position':'Height'; $('clip-pos-v').textContent=(clip.kind==='v'?(v>0?'+':'')+v.toFixed(1)+' m from the tower centre':(v<0?v.toFixed(1)+' m, below grade':v.toFixed(1)+' m above grade'));
@@ -274,7 +281,7 @@ function setViewMode(ortho,section,theta,phi){ view.ortho=ortho; view.section=se
   else o.target.set(LAB.S.posX,LAB.S.height*0.42,-LAB.S.posY);
   syncViewButtons(); syncClipUI(); LAB.requestRender(); }
 function syncViewButtons(){ const o=LAB.orbit; $('view-top').setAttribute('aria-pressed',String(view.ortho&&o.phi<0.05)); $('view-elev').setAttribute('aria-pressed',String(view.ortho&&!view.section&&o.phi>1.5)); $('view-section').setAttribute('aria-pressed',String(view.ortho&&view.section));
-  $('view-iso').setAttribute('aria-pressed',String(!view.ortho)); const v=$('viewport'); if(v) v.classList.toggle('is-2d',view.ortho); const h=$('view2d-hint'); if(h){ h.hidden=!view.ortho; h.textContent=view.ortho?(o.phi<0.05?'Plan':view.section?'Section':'Elevation')+' · orthographic · drag to pan · scroll to zoom · 3D to orbit':''; } }
+  $('view-iso').setAttribute('aria-pressed',String(!view.ortho)); const v=$('viewport'); if(v) v.classList.toggle('is-2d',view.ortho); const h=$('view2d-hint'); if(h){ h.hidden=!view.ortho; h.textContent=view.ortho?(o.phi<0.05?'Plan':view.section?'Section A–A':['South','East','North','West'][((Math.round(o.theta/(Math.PI/2))%4)+4)%4]+' elevation')+' · orthographic · drag to pan · scroll to zoom · 3D to orbit':''; } }
 function buildClipUI(){
   $('view-clip').addEventListener('click',()=>{ if(clip.on) setClip({on:false}); else setClip({on:true,kind:view.ortho&&LAB.orbit.phi<0.05?'h':'v',ang:view.ortho?LAB.orbit.theta:Math.round(LAB.orbit.theta/(Math.PI/2))*(Math.PI/2)}); if(!clip.on&&view.section) setViewMode(true,false); });
   $('clip-panel').querySelectorAll('[data-ck]').forEach(b=>b.addEventListener('click',()=>{ setClip({kind:b.dataset.ck}); if(view.ortho) $('clip-look').click(); }));
@@ -286,6 +293,114 @@ function buildClipUI(){
   LAB.hooks.afterUpdate.push(()=>{ if(clip.on) syncClipUI(); });
   syncClipUI(); syncViewButtons(); }
 LAB.clip={get state(){return clip;}, set:setClip, view, setViewMode};
+/* ---------- section and elevation drawings ----------
+   Section: one view, square to the cut line set on the key plan. Over the orthographic render (washed back, so it reads as the
+   building beyond), the cut is drawn as a section drawing: slabs, exterior walls, basement walls and core walls in solid poche,
+   the glazing cut as thin lines at each storey's sill and head, the earth hatched with the basements cut into it, and levels marked.
+   Elevation: the same earth line and hatch, with the floors below ground dashed in it, so the underground stays visible. */
+const SHEET={key:null,cut:null};
+const NS='http://www.w3.org/2000/svg';
+function levelName(f,below){ return below?'B'+f.bi:'L'+(f.i+1); }
+function belowSorted(){ const B=((LAB.S.typology==='upload'&&LAB.belowFloors)||[]).slice().sort((a,b)=>b.z-a.z); B.forEach((f,k)=>{ f.bi=k+1; }); return B; }
+function secGeom(){ const S=LAB.S, th=clip.ang+(clip.flip?Math.PI:0); const d={x:Math.sin(clip.ang),y:-Math.cos(clip.ang)}; const r={x:Math.cos(th),y:Math.sin(th)};
+  const L=clip.flip?{x:d.x,y:d.y}:{x:-d.x,y:-d.y}; const p0={x:S.posX+d.x*clip.off,y:S.posY+d.y*clip.off}; return {th,d,r,L,p0}; }
+function runsOf(f,p0,r,step){ const S=LAB.S, m=f.mask; if(!m) return {cut:[],core:[]}; const cl=LAB.toLocal(f,S.posX,S.posY), ch=(f.core||0)/2;
+  const uc=(f.cx-p0.x)*r.x+(f.cy-p0.y)*r.y, R=Math.hypot(m.nx,m.ny)/2+2; const cut=[], core=[]; let a=null, c=null; const N=Math.ceil(2*R/step);
+  for(let k=0;k<=N+1;k++){ const u=uc-R+k*step; let ins=false, isc=false; if(k<=N){ const l=LAB.toLocal(f,p0.x+r.x*u,p0.y+r.y*u); const ix=Math.floor(l.x-m.x0), iy=Math.floor(l.y-m.y0); ins=ix>=0&&iy>=0&&ix<m.nx&&iy<m.ny&&!!m.cells[iy*m.nx+ix]; isc=ins&&ch>0&&Math.abs(l.x-cl.x)<=ch&&Math.abs(l.y-cl.y)<=ch; }
+    if(ins&&a===null) a=u-step/2; if(!ins&&a!==null){ cut.push([a,u-step/2]); a=null; } if(isc&&c===null) c=u-step/2; if(!isc&&c!==null){ core.push([c,u-step/2]); c=null; } }
+  return {cut:cut.filter(q=>q[1]-q[0]>0.6),core:core.filter(q=>q[1]-q[0]>0.6)}; }
+/* projection of a floor onto a horizontal axis: all cells, or only those on the far side of the cut */
+function spanOf(f,o,r,L){ const m=f.mask; if(!m) return []; const bins=new Map(); for(let iy=0;iy<m.ny;iy++) for(let ix=0;ix<m.nx;ix++){ if(!m.cells[iy*m.nx+ix]) continue; const p=LAB.toWorld(f,m.x0+ix+0.5,m.y0+iy+0.5); const dx=p.x-o.x, dy=p.y-o.y; if(L&&dx*L.x+dy*L.y<0) continue; const u=dx*r.x+dy*r.y; const b=Math.floor(u); for(let q=b-1;q<=b+1;q++) if(Math.abs(q+0.5-u)<1.2) bins.set(q,1); }
+  const ks=[...bins.keys()].sort((a,b)=>a-b); const out=[]; for(const k of ks){ const l=out[out.length-1]; if(l&&k<=l[1]) l[1]=k+1; else out.push([k,k+1]); } return out; }
+function minus(A,B){ const out=[]; for(const [a,b] of A){ let segs=[[a,b]]; for(const [c,d] of B){ const nx=[]; for(const [x,y] of segs){ if(d<=x||c>=y){ nx.push([x,y]); continue; } if(c>x) nx.push([x,c]); if(d<y) nx.push([d,y]); } segs=nx; } for(const s of segs) if(s[1]-s[0]>0.3) out.push(s); } return out; }
+const compass=(x,y)=>Math.abs(x)>=Math.abs(y)?(x>0?'E':'W'):(y>0?'N':'S');
+function sectionCut(){ const G=secGeom(), F=LAB.floors||[], B=belowSorted(); const key=[F.length&&F[0],B.length&&B[0],F.length,B.length,clip.ang,clip.off,clip.flip,LAB.S.posX,LAB.S.posY,LAB.S.rotDeg].join('|');
+  if(SHEET.key===key&&SHEET.cut&&SHEET.F===F) return SHEET.cut;
+  const rows=[]; for(const f of B.slice().reverse()) rows.push({f,below:true,...runsOf(f,G.p0,G.r,0.25)}); for(const f of F) rows.push({f,below:false,...runsOf(f,G.p0,G.r,0.25)});
+  SHEET.key=key; SHEET.F=F; SHEET.cut={G,rows}; return SHEET.cut; }
+function el(tag,attrs,parent){ const e=document.createElementNS(NS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); if(parent) parent.appendChild(e); return e; }
+function sheetEls(){ let s=document.getElementById('sheet'); if(s) return s; const vp=$('viewport'); const w=document.createElement('div'); w.id='sheet-wash'; w.className='sheet-wash'; w.hidden=true; vp.insertBefore(w,vp.querySelector('.compass'));
+  s=document.createElementNS(NS,'svg'); s.id='sheet'; s.setAttribute('class','sheet'); vp.insertBefore(s,vp.querySelector('.compass')); return s; }
+function hideSheet(){ const s=document.getElementById('sheet'); if(s) s.style.display='none'; const w=document.getElementById('sheet-wash'); if(w) w.hidden=true; const k=document.getElementById('keyplan'); if(k) k.hidden=true; }
+function drawSheet(){ const o=LAB.orbit; if(!view.ortho||o.phi<1.5||clip.capturing){ hideSheet(); return; }
+  const svg=sheetEls(), cv=LAB.renderer.domElement, vp=$('viewport'); const cr=cv.getBoundingClientRect(), vr=vp.getBoundingClientRect(); const W=cr.width, H=cr.height;
+  Object.assign(svg.style,{display:'block',left:(cr.left-vr.left)+'px',top:(cr.top-vr.top)+'px',width:W+'px',height:H+'px'}); svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML='';
+  document.getElementById('sheet-wash').hidden=!view.section;
+  const S=LAB.S, sec=view.section; let G, org, r;
+  if(sec){ G=sectionCut().G; org=G.p0; r=G.r; } else { const th=o.theta; org={x:S.posX,y:S.posY}; r={x:Math.cos(th),y:Math.sin(th)}; }
+  const P=(u,y)=>{ const v=new THREE.Vector3(org.x+r.x*u,y,-(org.y+r.y*u)).project(orthoCam); return [(v.x+1)/2*W,(1-v.y)/2*H]; };
+  const O=P(0,0), X=P(1,0), Y=P(0,1); const kx=X[0]-O[0], ky=Y[1]-O[1]; const sx=u=>O[0]+kx*u, sy=y=>O[1]+ky*y;
+  const defs=el('defs',{},svg); const pat=el('pattern',{id:'earth-hatch',patternUnits:'userSpaceOnUse',width:9,height:9,patternTransform:'rotate(45)'},defs); el('rect',{width:9,height:9,fill:'#ECE4D5'},pat); el('line',{x1:0,y1:0,x2:0,y2:9,stroke:'#A8916C','stroke-width':1},pat);
+  const gy=sy(0); el('rect',{x:0,y:gy,width:W,height:Math.max(0,H-gy),fill:'url(#earth-hatch)'},svg);
+  const B=belowSorted(), F=LAB.floors||[]; const ink='#1F2227', pr=(a,b,y0,y1,fill,extra)=>{ const x0=sx(Math.min(a,b)), x1=sx(Math.max(a,b)), ya=sy(Math.max(y0,y1)), yb=sy(Math.min(y0,y1)); return el('rect',Object.assign({x:x0.toFixed(1),y:ya.toFixed(1),width:Math.max(0.6,x1-x0).toFixed(1),height:Math.max(0.6,yb-ya).toFixed(1),fill:fill||ink},extra||{}),svg); };
+  let uMax=-1e9, uMin=1e9;
+  if(!sec){ // elevation: the floors below ground, dashed in the earth
+    for(const f of B){ for(const [a,b] of spanOf(f,org,r,null)){ pr(a,b,f.z,f.z+f.h,'rgba(255,255,255,.78)',{stroke:'#5E4B3A','stroke-width':1.2,'stroke-dasharray':'6 4'}); uMax=Math.max(uMax,b); uMin=Math.min(uMin,a); } }
+    for(const f of F.slice(0,1)) for(const [a,b] of spanOf(f,org,r,null)){ uMax=Math.max(uMax,b); uMin=Math.min(uMin,a); }
+  } else {
+    const {rows}=sectionCut(); const T=Math.min(0.5,Math.max(0.25,GAP)), TW=0.3, TB=0.4;
+    // rooms cut below grade open up the earth
+    for(const q of rows) if(q.below) for(const [a,b] of q.cut) pr(a,b,q.f.z,q.f.z+q.f.h,'#FAF8F4');
+    rows.forEach((q,k)=>{ const f=q.f, top=f.z+f.h, prev=rows[k-1], next=rows[k+1];
+      for(const [a,b] of q.cut){ uMax=Math.max(uMax,b); uMin=Math.min(uMin,a); }
+      // slab over each storey, and under any part not standing on the storey below (the lowest one is the raft or ground slab)
+      for(const [a,b] of q.cut) pr(a,b,top-T,top);
+      for(const [a,b] of (prev?minus(q.cut,prev.cut):q.cut)) pr(a,b,f.z-(prev?T:(q.below?0.8:T)),f.z);
+      const y0=f.z, y1=top-T;
+      for(const [a,b] of q.cut){
+        if(q.below){ pr(a,a+TB,y0,y1); pr(b-TB,b,y0,y1); continue; }
+        for(const [end,dir] of [[a,-1],[b,1]]){ const o2=compass(r.x*dir,r.y*dir); const z=zoneFor(o2,f.i+1); const Bd=band(f,o2,z); const wx0=dir<0?end:end-TW, wx1=wx0+TW;
+          const sill=y0+Bd.sp, head=y0+Bd.head; if(sill>y0+0.05) pr(wx0,wx1,y0,sill); if(head<y1-0.05) pr(wx0,wx1,head,y1);
+          const m=(wx0+wx1)/2; for(const du of [-0.06,0.06]) el('line',{x1:sx(m+du).toFixed(1),x2:sx(m+du).toFixed(1),y1:sy(sill).toFixed(1),y2:sy(head).toFixed(1),stroke:'#2F5F8A','stroke-width':1},svg);
+          el('line',{x1:sx(wx0).toFixed(1),x2:sx(wx1).toFixed(1),y1:sy(sill).toFixed(1),y2:sy(sill).toFixed(1),stroke:ink,'stroke-width':1},svg); }
+      }
+      for(const [c0,c1] of q.core){ pr(c0,c0+TW,y0,y1); pr(c1-TW,c1,y0,y1); }
+    });
+  }
+  // ground line and level datums
+  el('line',{x1:0,x2:W,y1:gy.toFixed(1),y2:gy.toFixed(1),stroke:ink,'stroke-width':2},svg);
+  if(uMax>-1e8){ const lx=sx(uMax)+18; const lv=[]; for(const f of B) lv.push([f.z,levelName(f,true)]); F.forEach(f=>lv.push([f.z,levelName(f,false)])); const top=F.length?F[F.length-1]:null; if(top) lv.push([top.z+top.h,'Roof']);
+    const minGap=15; let lastY=1e9; const lvs=lv.sort((a,b)=>a[0]-b[0]); const must=new Set([0]);
+    for(let k=0;k<lvs.length;k++){ const [z,nm]=lvs[k]; const y=sy(z); const key=Math.abs(z)<0.01||nm==='Roof'||nm.startsWith('B'); if(!key&&Math.abs(lastY-y)<minGap) continue; if(!key&&k<lvs.length-1&&Math.abs(sy(lvs[lvs.length-1][0])-y)<minGap) continue; lastY=y;
+      el('line',{x1:(lx-10).toFixed(1),x2:(lx+70).toFixed(1),y1:y.toFixed(1),y2:y.toFixed(1),stroke:'#6B7078','stroke-width':0.8,'stroke-dasharray':'2 2'},svg);
+      el('path',{d:`M${lx} ${y} l-5 -6 h10 z`,fill:'none',stroke:ink,'stroke-width':1},svg);
+      const t=el('text',{x:(lx+8).toFixed(1),y:(y-3).toFixed(1),fill:ink,'font-size':10.5,'font-family':'var(--font-m),monospace',stroke:'#fff','stroke-width':3,'paint-order':'stroke'},svg); t.textContent=`${nm}  ${z>0.005?'+':z<-0.005?'−':'±'}${Math.abs(z).toFixed(2)}`; }
+  }
+  // scale bar
+  const m10=Math.abs(kx)*10; if(m10>8){ const bx=18, by=58; let n=10; while(Math.abs(kx)*n<60) n*=2; while(Math.abs(kx)*n>160&&n>2) n/=2; const L2=Math.abs(kx)*n; el('rect',{x:bx,y:by-10,width:L2+40,height:22,fill:'rgba(255,255,255,.85)'},svg); el('rect',{x:bx+4,y:by-3,width:L2/2,height:4,fill:ink},svg); el('rect',{x:bx+4+L2/2,y:by-3,width:L2/2,height:4,fill:'#fff',stroke:ink,'stroke-width':1},svg); const t=el('text',{x:bx+8+L2,y:by+2,fill:ink,'font-size':10,'font-family':'var(--font-m),monospace'},svg); t.textContent=n+' m'; }
+  if(sec) drawKeyPlan(); else { const k=document.getElementById('keyplan'); if(k) k.hidden=true; }
+}
+/* key plan: the cut line on a small plan of the parcel and the footprint; drag the line to move it, drag an end to turn it, click an arrow to look the other way */
+let kpDrag=null;
+function kpFrame(){ const S=LAB.S, F=LAB.floors||[]; let E=50; for(const f of F) E=Math.max(E,Math.hypot(f.w||0,f.d||0)*0.75+Math.hypot(f.cx-S.posX,f.cy-S.posY)); E=Math.max(E,Math.abs(clip.off)+12); return {cx:S.posX,cy:S.posY,E:Math.min(E,400),W:210}; }
+function drawKeyPlan(){ let K=document.getElementById('keyplan'); const vp=$('viewport');
+  if(!K){ K=document.createElement('div'); K.id='keyplan'; K.className='keyplan'; K.innerHTML=`<div class="kp-head"><b>Section A–A</b><span id="kp-dir"></span></div><svg id="kp-svg" width="210" height="210" viewBox="0 0 210 210" role="img" aria-label="Key plan with the section line"></svg><div class="kp-acts"><button type="button" id="kp-flip">Look the other way</button><button type="button" data-kp="ns" title="Cut east–west, looking north">E–W</button><button type="button" data-kp="ew" title="Cut north–south, looking east">N–S</button></div><p class="kp-hint">Drag the line to move the cut · drag a dot to turn it · click an arrow to flip</p>`; vp.appendChild(K);
+    K.addEventListener('pointerdown',e=>e.stopPropagation()); K.addEventListener('wheel',e=>e.stopPropagation());
+    $('kp-flip').onclick=()=>sectionSet({flip:!clip.flip});
+    K.querySelectorAll('[data-kp]').forEach(b=>b.onclick=()=>sectionSet(b.dataset.kp==='ns'?{ang:0,flip:false,off:0}:{ang:-Math.PI/2,flip:false,off:0}));
+    const sv=$('kp-svg'); const toPlan=e=>{ const F=kpFrame(), rc=sv.getBoundingClientRect(), k=(F.W/2)/F.E; const px=(e.clientX-rc.left)*F.W/rc.width, py=(e.clientY-rc.top)*F.W/rc.height; return {x:F.cx+(px-F.W/2)/k,y:F.cy-(py-F.W/2)/k}; };
+    sv.addEventListener('pointerdown',e=>{ const t=e.target.closest('[data-kpart]'); if(!t) return; const part=t.dataset.kpart; if(part==='arrow'){ sectionSet({flip:!clip.flip}); return; } sv.setPointerCapture(e.pointerId); kpDrag={part,id:e.pointerId}; e.preventDefault(); });
+    sv.addEventListener('pointermove',e=>{ if(!kpDrag||e.pointerId!==kpDrag.id) return; const p=toPlan(e), G=secGeom(), S=LAB.S;
+      if(kpDrag.part==='line'){ const off=(p.x-S.posX)*G.d.x+(p.y-S.posY)*G.d.y; sectionSet({off:e.altKey?Math.round(off*10)/10:Math.round(off*2)/2},true); }
+      else { let a=Math.atan2(p.y-G.p0.y,p.x-G.p0.x)+(kpDrag.part==='endL'?Math.PI:0); if(!e.altKey) a=Math.round(a/(Math.PI/36))*(Math.PI/36); const d={x:Math.sin(a),y:-Math.cos(a)}; const off=(G.p0.x-S.posX)*d.x+(G.p0.y-S.posY)*d.y; sectionSet({ang:a,flip:false,off},true); } });
+    const end=e=>{ if(kpDrag&&e.pointerId===kpDrag.id){ kpDrag=null; SHEET.key=null; LAB.requestRender(); } }; sv.addEventListener('pointerup',end); sv.addEventListener('pointercancel',end);
+  }
+  K.hidden=false; const F=kpFrame(), k=(F.W/2)/F.E, X=x=>(F.W/2+(x-F.cx)*k).toFixed(1), Y=y=>(F.W/2-(y-F.cy)*k).toFixed(1);
+  const G=secGeom(), S=LAB.S; let h='';
+  const site=LAB.site&&LAB.site.site; if(site&&site.polygon&&site.polygon.length) h+=`<polygon points="${site.polygon.map(q=>X(q[0])+','+Y(q[1])).join(' ')}" fill="none" stroke="#9AA0A6" stroke-width="1" stroke-dasharray="4 3"/>`;
+  const runsPoly=(f,fill,stroke,dash)=>{ const m=f.mask; if(!m) return ''; let s=''; for(let iy=0;iy<m.ny;iy++){ let ix=0; while(ix<m.nx){ if(!m.cells[iy*m.nx+ix]){ ix++; continue; } let j=ix; while(j+1<m.nx&&m.cells[iy*m.nx+j+1]) j++; const c=[[m.x0+ix,m.y0+iy],[m.x0+j+1,m.y0+iy],[m.x0+j+1,m.y0+iy+1],[m.x0+ix,m.y0+iy+1]].map(q=>LAB.toWorld(f,q[0],q[1])); s+=`<polygon points="${c.map(q=>X(q.x)+','+Y(q.y)).join(' ')}" fill="${fill}" stroke="${fill}" stroke-width="0.6"/>`; ix=j+1; } } return s; };
+  const B=belowSorted(), Fl=LAB.floors||[]; if(B.length) h+=`<g opacity=".55">${runsPoly(B[B.length-1],'#B9A27E')}</g>`; if(Fl.length) h+=runsPoly(Fl[0],'#5B6169'); const mid=Fl[Math.floor(Fl.length/2)]; if(mid&&mid!==Fl[0]) h+=`<g opacity=".35">${runsPoly(mid,'#2E3338')}</g>`;
+  const R=F.E*1.6, a={x:G.p0.x-G.r.x*R,y:G.p0.y-G.r.y*R}, b={x:G.p0.x+G.r.x*R,y:G.p0.y+G.r.y*R}; const eL={x:G.p0.x-G.r.x*F.E*0.82,y:G.p0.y-G.r.y*F.E*0.82}, eR={x:G.p0.x+G.r.x*F.E*0.82,y:G.p0.y+G.r.y*F.E*0.82};
+  h+=`<line x1="${X(a.x)}" y1="${Y(a.y)}" x2="${X(b.x)}" y2="${Y(b.y)}" stroke="#E8692B" stroke-width="1.6" stroke-dasharray="10 3 2 3"/>`;
+  h+=`<line data-kpart="line" x1="${X(a.x)}" y1="${Y(a.y)}" x2="${X(b.x)}" y2="${Y(b.y)}" stroke="transparent" stroke-width="14" style="cursor:move"/>`;
+  const al=F.E*0.16; for(const [e,part] of [[eL,'endL'],[eR,'endR']]){ const tip={x:e.x+G.L.x*al,y:e.y+G.L.y*al};
+    h+=`<g data-kpart="arrow" style="cursor:pointer"><line x1="${X(e.x)}" y1="${Y(e.y)}" x2="${X(tip.x)}" y2="${Y(tip.y)}" stroke="#E8692B" stroke-width="2"/><circle cx="${X(tip.x)}" cy="${Y(tip.y)}" r="8" fill="#E8692B"/><text x="${X(tip.x)}" y="${(+Y(tip.y)+3.5).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#fff">A</text></g>`;
+    h+=`<circle data-kpart="${part}" cx="${X(e.x)}" cy="${Y(e.y)}" r="5.5" fill="#fff" stroke="#E8692B" stroke-width="2" style="cursor:grab"/>`; }
+  h+=`<g transform="translate(192 22)"><path d="M0 -12 L5 4 L0 1 L-5 4 Z" fill="#1F2227"/><text y="15" text-anchor="middle" font-size="9" fill="#1F2227">N</text></g>`;
+  $('kp-svg').innerHTML=h;
+  const deg=((G.th*180/Math.PI)%360+360)%360; const look=Math.atan2(G.L.y,G.L.x)*180/Math.PI; const lk=((90-look)%360+360)%360; const nm=['north','north-east','east','south-east','south','south-west','west','north-west'][Math.round(lk/45)%8];
+  $('kp-dir').textContent=`looking ${nm} · ${clip.off>0?'+':''}${clip.off.toFixed(1)} m`; }
+function sectionSet(p,live){ Object.assign(clip,p,{on:true,kind:'v'}); const o=LAB.orbit; o.theta=clip.ang+(clip.flip?Math.PI:0); o.phi=Math.PI/2; if(!live) SHEET.key=null; syncClipUI(); syncViewButtons(); LAB.requestRender(); }
 /* ---------- level of detail: fused massing blocks in Basic; floors and a façade built from the strategy zones in Advanced; uploaded files as modeled ---------- */
 const advGroup=new THREE.Group(), lodGroup=new THREE.Group(), dressGroup=new THREE.Group(); LAB.scene.add(advGroup); LAB.scene.add(lodGroup); LAB.scene.add(dressGroup); let advVersion=-1;
 const mkMat=c=>new THREE.MeshLambertMaterial({color:c,side:THREE.DoubleSide});
@@ -802,7 +917,8 @@ function buildUI(){
   // true views: the core's handlers run first and set the orbit; these refine them
   $('view-top').addEventListener('click',()=>{ if(clip.on&&clip.kind==='v') setClip({on:false}); setViewMode(true,false,0,0); });
   $('view-elev').addEventListener('click',()=>{ const th=view.ortho&&!view.section&&LAB.orbit.phi>1.5?LAB.orbit.theta+Math.PI/2:0; setClip({on:false}); setViewMode(true,false,th,Math.PI/2); });
-  $('view-section').addEventListener('click',()=>{ const th=view.section?LAB.orbit.theta+Math.PI/2:(clip.on&&clip.kind==='v'?clip.ang+(clip.flip?Math.PI:0):0); setClip({on:true,kind:'v',ang:th,flip:false}); setViewMode(true,true,th,Math.PI/2); });
+  // one section view: where it cuts and which way it looks are set on the key plan, not by pressing the button again
+  $('view-section').addEventListener('click',()=>{ if(!(clip.on&&clip.kind==='v')) setClip({on:true,kind:'v',ang:0,flip:false,off:0}); SHEET.key=null; setViewMode(true,true,clip.ang+(clip.flip?Math.PI:0),Math.PI/2); });
   $('view-iso').addEventListener('click',()=>setViewMode(false,false)); $('view-site').addEventListener('click',()=>{ view.ortho=false; view.section=false; syncViewButtons(); LAB.requestRender(); });
   buildClipUI();
   buildZoneUI();
@@ -1316,7 +1432,7 @@ function groundPoint(e){ const ray=pickRay(e); const d=ray.ray.direction; if(Mat
 function massAt(e){ return pickRay(e).intersectObjects(massTargets(),false).length>0; }
 function slideGroups(dx,dy){ for(const g of [lodGroup,dressGroup,LAB.towerGroup,LAB.waterGroup,selHelper]){ if(g) g.position.set(dx,0,-dy); } advGroup.position.set(LAB.S.posX+dx,0,-(LAB.S.posY+dy)); LAB.requestRender(); }
 function hintText(dx,dy){ const S=LAB.S; const x=S.posX+(dx||0), y=S.posY+(dy||0); return `<b>Mass selected</b> · ${x>0?'+':''}${x} m E, ${y>0?'+':''}${y} m N · drag to move · arrows nudge 1 m, Shift 5 m · [ ] rotate · Esc`; }
-vpEl.addEventListener('pointerdown',e=>{ mDown=null; if(e.button!==0||e.target.closest('.viewtools,.clip-panel,.abar,.hud,.compass,.mass-hint')) return; mDown={x:e.clientX,y:e.clientY,b:e.button};
+vpEl.addEventListener('pointerdown',e=>{ mDown=null; if(e.button!==0||e.target.closest('.viewtools,.clip-panel,.keyplan,.abar,.hud,.compass,.mass-hint')) return; mDown={x:e.clientX,y:e.clientY,b:e.button};
   if(massAt(e)){ const g=groundPoint(e); if(g){ e.stopImmediatePropagation(); vpEl.setPointerCapture(e.pointerId); drag={id:e.pointerId,ox:LAB.S.posX-g.x,oy:LAB.S.posY-g.y,dx:0,dy:0,moved:false}; if(!massSel){ massSel=true; refreshMassSel(); } vpEl.style.cursor='grabbing'; } } },true);
 vpEl.addEventListener('pointermove',e=>{ if(drag){ if(e.pointerId!==drag.id) return; const g=groundPoint(e); if(!g) return; const P=LAB.PARAMS, S=LAB.S; const snap=e.altKey?0.1:1; let nx=Math.round((g.x+drag.ox)/snap)*snap, ny=Math.round((g.y+drag.oy)/snap)*snap; nx=Math.max(P.posX.min,Math.min(P.posX.max,nx)); ny=Math.max(P.posY.min,Math.min(P.posY.max,ny)); drag.dx=+(nx-S.posX).toFixed(1); drag.dy=+(ny-S.posY).toFixed(1); drag.moved=drag.moved||Math.hypot(e.clientX-mDown.x,e.clientY-mDown.y)>3; slideGroups(drag.dx,drag.dy); $('mass-hint').innerHTML=hintText(drag.dx,drag.dy); return; }
   if(e.buttons) return; vpEl.style.cursor=massAt(e)?'grab':''; });

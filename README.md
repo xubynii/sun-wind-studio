@@ -65,7 +65,13 @@ Settings persist in the browser's local storage per device.
 
 ## Views and the clipping plane
 
-- **3D, Elevation, Section, Plan.** Elevation, Section and Plan are true orthographic views, square to the model: the plan looks straight down with north up, and elevations and sections are level. They stay 2D: dragging pans, the wheel zooms about the cursor, and only 3D orbits. Press Elevation or Section again to turn 90 degrees.
+- **3D, Elevation, Section, Plan.** Elevation, Section and Plan are true orthographic views, square to the model: the plan looks straight down with north up, and elevations and sections are level. They stay 2D: dragging pans, the wheel zooms about the cursor, and only 3D orbits.
+- **Elevation.** Press Elevation again to go round the four faces: south, east, north and west. Anything between the viewer and the tower's nearest face is cut away. The ground is drawn as hatched earth with the floors below ground dashed in it, and the levels are marked.
+- **Section A-A.** There is one section view. A key plan in the corner shows the parcel and the footprint with the cut line. Drag the line to move the cut and drag an end dot to turn it (5 degree snap, Alt for free). Click an arrow or Look the other way to flip it. E-W and N-S set the two main cuts. The cut is drawn as a section drawing over the washed-back building beyond:
+  - slabs, exterior walls, basement walls and core walls in solid poche;
+  - glazing as thin lines between each storey's sill and head, from its facade zone;
+  - basements cut into hatched earth;
+  - level datums and a scale bar.
 - **Clip.** A clipping plane like Rhino's. It can be vertical, for sections, or horizontal, for plan cuts at any height including below grade. Set its turn and position in the panel, or drag the orange handle in 3D. Flip side keeps the other half, and Look at the section opens the orthographic view of the cut.
 - **Cut display.** While the plane is on, the ground becomes a block of earth and cut solids show a flat fill: dark for the building, tan for the earth, brown for basements. Section always frames the basements.
 - **Import.** Choosing a model file goes straight to the model check: layers take their guessed roles. Change layer roles reopens the role table and Re-import applies it. Only a file with no massing layer stops at the table.

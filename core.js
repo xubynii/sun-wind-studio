@@ -978,7 +978,7 @@ new ResizeObserver(resize).observe(vp);
 (function loop(){ requestAnimationFrame(loop); if(needsRender){ placeCamera(); renderer.render(scene,camera); needsRender=false; } })();
 
 const ptrs=new Map(); let pinchD=0, downAt=null;
-vp.addEventListener('pointerdown',e=>{ if(e.target.closest('.viewtools,.clip-panel')) return; ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY}); vp.setPointerCapture(e.pointerId); downAt={x:e.clientX,y:e.clientY,shift:e.shiftKey}; });
+vp.addEventListener('pointerdown',e=>{ if(e.target.closest('.viewtools,.clip-panel,.keyplan')) return; ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY}); vp.setPointerCapture(e.pointerId); downAt={x:e.clientX,y:e.clientY,shift:e.shiftKey}; });
 vp.addEventListener('pointermove',e=>{
   if(!ptrs.has(e.pointerId)) return; const p=ptrs.get(e.pointerId);
   if(ptrs.size===1){ if(e.buttons===2||e.ctrlKey){ const k=orbit.dist*0.0015; const dx=(e.clientX-p.x)*k, dy=(e.clientY-p.y)*k; orbit.target.x-=dx*Math.cos(orbit.theta); orbit.target.z+=dx*Math.sin(orbit.theta); orbit.target.y+=dy; } else { orbit.theta-=(e.clientX-p.x)*0.006; orbit.phi=Math.min(1.52,Math.max(0.12,orbit.phi-(e.clientY-p.y)*0.005)); } needsRender=true; }
