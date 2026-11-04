@@ -281,6 +281,31 @@ h2 .help{order:0}
 .secprog .sp-tint{display:flex;gap:6px;align-items:flex-start;margin:6px 2px 0;padding-top:6px;border-top:1px solid #EEEEEA;color:#5F646B;font-size:11px}.secprog .sp-note{margin:4px 2px 0;color:#B2491A;font-size:11px}
 @media (max-height:760px){.secprog{max-height:calc(100% - 84px - 120px)}}
 .viewport.floor-hover canvas{cursor:pointer}
+/* tab colours: one per tool; the icon carries it, the selected tab is tinted with it */
+.rail button{--tc:var(--muted)}
+.rail button[data-tab="model"]{--tc:#475467}.rail button[data-tab="site"]{--tc:#3E8E5E}.rail button[data-tab="program"]{--tc:#7A5FC0}
+.rail button[data-tab="sun"]{--tc:#D99404}.rail button[data-tab="wind"]{--tc:#1E9E8E}.rail button[data-tab="rain"]{--tc:#3B7DD8}.rail button[data-tab="eff"]{--tc:#B0568F}
+.rail button[data-tab="strat"]{--tc:#D0643F}.rail button[data-tab="daylight"]{--tc:#C29A00}.rail button[data-tab="vent"]{--tc:#2A9FC4}.rail button[data-tab="energy"]{--tc:#DD4B39}.rail button[data-tab="report"]{--tc:#5F646B}
+.rail button svg{stroke:var(--tc)}
+.rail button[aria-selected="true"]{background:color-mix(in srgb,var(--tc) 14%,transparent);color:var(--tc);box-shadow:inset 3px 0 0 var(--tc)}
+.rail button:hover svg{stroke:var(--tc)}
+body[data-tone="sun"]{--tone:#D99404}body[data-tone="wind"]{--tone:#1E9E8E}body[data-tone="rain"]{--tone:#3B7DD8}body[data-tone="eff"]{--tone:#B0568F}body[data-tone="strat"]{--tone:#D0643F}body[data-tone="daylight"]{--tone:#C29A00}body[data-tone="vent"]{--tone:#2A9FC4}body[data-tone="energy"]{--tone:#DD4B39}body[data-tone="site"]{--tone:#3E8E5E}body[data-tone="program"]{--tone:#7A5FC0}
+body[data-tab="site"]{--tabc:#3E8E5E}body[data-tab="program"]{--tabc:#7A5FC0}body[data-tab="sun"]{--tabc:#D99404}body[data-tab="wind"]{--tabc:#1E9E8E}body[data-tab="rain"]{--tabc:#3B7DD8}body[data-tab="eff"]{--tabc:#B0568F}body[data-tab="strat"]{--tabc:#D0643F}body[data-tab="daylight"]{--tabc:#C29A00}body[data-tab="vent"]{--tabc:#2A9FC4}body[data-tab="energy"]{--tabc:#DD4B39}
+.panel .tab.active .ptitle{color:var(--tabc,inherit)}
+/* the review panel on the right speaks the colour of the study in view */
+body[data-tone] .review{--accent:var(--tone,#0E6E86);--accent-soft:color-mix(in srgb,var(--tone,#0E6E86) 12%,white);box-shadow:inset 0 3px 0 var(--tone,transparent)}
+body[data-tone] .review h2,body[data-tone] .review h3{color:color-mix(in srgb,var(--tone,#1F2227) 70%,#1F2227)}
+body[data-tone] .review .banner{border-left:3px solid var(--tone,transparent);background:color-mix(in srgb,var(--tone,#fff) 8%,white)}
+body[data-tone] #run-active{background:var(--tone,var(--accent));border-color:var(--tone,var(--accent))}
+/* tool icons */
+.keyplan svg.ti,.planpanel svg.ti,.ti{width:14px;height:14px;display:inline-block;background:none;border-radius:0;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none;vertical-align:-2px;margin-right:5px}
+.planpanel button,.keyplan button,.clip-panel button,#prog-insec{display:inline-flex;align-items:center;justify-content:center}
+.planpanel #pg-del .ti{margin:0}
+.planpanel .pp-gridbox summary .ti{margin-right:6px}
+.planpanel .pg-stats{display:flex;gap:10px;margin:6px 0 0;font:500 11px var(--font-m);color:#5F646B}.planpanel .pg-stats span{display:inline-flex;align-items:center;gap:3px}.planpanel .pg-stats .ti{margin-right:2px}
+.planpanel .pg-col{display:inline-block;width:8px;height:8px;background:#1F2227;margin-right:3px}.planpanel .pg-col.off{background:none;outline:1.5px dashed #E8692B;outline-offset:-1px}
+
+.sheet .col-ghost{stroke:transparent;stroke-width:1.5;stroke-dasharray:3 2}.sheet .col-ghost:hover{stroke:#E8692B}
 .planpanel .pp-check{display:flex;gap:6px;align-items:center;margin:4px 0;font-size:11.5px}
 .planpanel .pp-legend{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px;color:#5F646B;font-size:10.5px}.planpanel .pp-legend span{display:flex;align-items:center;gap:4px}
 .planpanel .pp-legend i{display:inline-block;width:16px;height:7px}.lg-cut{background:#1F2227}.lg-glass{border-top:1px solid #1F2227;border-bottom:1px solid #1F2227;background:linear-gradient(#2F5F8A,#2F5F8A) center/100% 1px no-repeat}.lg-below{border-top:1px solid #5F646B;height:0!important;margin-top:3px}.lg-over{border-top:1px dashed #4B5057;height:0!important;margin-top:3px}
@@ -391,9 +416,9 @@ h2 .help{order:0}
 
       <section class="tab" data-tab="program">
         <h1 class="ptitle">Program</h1>
-        <p class="plead">Program layers, as in dtmass: each run of floors with one function is a layer. Top of the list is the top of the tower. Drag a layer to restack it, lock it to keep it, ghost it in the drawings, or send it back to Auto. Assign floors straight in the Section view, or select a layer here.</p>
+        
         <div class="prog-mix" id="prog-mix"></div>
-        <div class="lhead"><span class="lstack">Stack</span><button type="button" class="btn small" id="prog-insec">Assign in the section view</button></div>
+        <div class="lhead"><span class="lstack">Stack</span><button type="button" class="btn small" id="prog-insec" title="Select floors and assign programs in the section view"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M5 9h14M5 15h14"/></svg>Section</button></div>
         <div class="prog-list blist" id="prog-list" role="list"></div>
         <p class="why" id="prog-sel"></p>
         <div class="prog-tools"><select id="prog-pick" aria-label="Program for the selected floors"></select><button type="button" class="btn small primary" id="prog-assign">Assign to selected</button><button type="button" class="btn small" id="prog-auto">Back to Auto</button></div>
@@ -547,8 +572,7 @@ h2 .help{order:0}
         <div class="cp-seg"><button type="button" data-ck="v">Vertical · section</button><button type="button" data-ck="h">Horizontal · plan cut</button></div>
         <label class="cp-row" id="clip-ang-row"><span>Turn</span><input type="range" id="clip-ang" min="0" max="345" step="15"><em id="clip-ang-v"></em></label>
         <label class="cp-row"><span id="clip-pos-l">Position</span><input type="range" id="clip-pos"><em id="clip-pos-v"></em></label>
-        <div class="cp-acts"><button type="button" id="clip-flip">Flip side</button><button type="button" id="clip-look">Look at the section</button></div>
-        <p class="cp-hint">In 3D, drag the orange handle to slide the plane (Alt for 0.1 m steps). The ground is shown as cut earth, so basements read in their ground.</p>
+        <div class="cp-acts"><button type="button" id="clip-flip" title="Keep the other side"><svg class="ti" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg>Flip</button><button type="button" id="clip-look">Look at the section</button></div>
       </div>
       <div class="hud view2d-hint" id="view2d-hint" hidden></div>
       <div class="hud" id="hud">Drag to orbit · scroll to zoom · drag the mass to move it</div>

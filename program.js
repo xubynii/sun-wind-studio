@@ -73,7 +73,7 @@
     renderBar(); return B; }
   function renderBar(){ const B=$('secprog'); if(!B) return; const P=PR(); const lockedSel=[...sel].filter(locked).length;
     const names=[...sel].map(k=>{ const r=rows().find(x=>x.k===k); return r?r.name:''; }).filter(Boolean);
-    B.innerHTML=`<div class="sp-head"><b>Program</b><span>${sel.size?`${sel.size===1?names[0]:sel.size+' floors'} selected${lockedSel?` · ${lockedSel} locked`:''}`:'Click a floor in the section · drag over several · Shift-click a range · Ctrl-click to add'}</span>${sel.size?'<button type="button" id="sp-clear" class="sp-x">Clear</button>':''}</div>
+    B.title='Click a floor in the section, drag over several, Shift-click a range, Ctrl-click to add'; B.innerHTML=`<div class="sp-head"><b>Program</b><span>${sel.size?`${sel.size===1?names[0]:sel.size+' floors'} selected${lockedSel?` · ${lockedSel} locked`:''}`:'Select floors'}</span>${sel.size?'<button type="button" id="sp-clear" class="sp-x">Clear</button>':''}</div>
       <div class="sp-chips">${Object.entries(P).map(([k,v])=>`<button type="button" data-p="${k}" ${sel.size?'':'disabled'} title="${esc(v.name)}"><i style="background:${col(k)}"></i>${esc(v.short)}</button>`).join('')}<button type="button" data-p="" ${sel.size?'':'disabled'} title="Back to Auto: the stacking chooses"><i style="background:transparent;box-shadow:inset 0 0 0 1px #9AA0A6"></i>Auto</button></div>
       <label class="sp-tint"><input type="checkbox" id="sp-tint" ${tint()?'checked':''}> Colour the rooms by program</label>${note?`<p class="sp-note">${esc(note)}</p>`:''}`; }
   const tint=()=>S().progTint!==0;
