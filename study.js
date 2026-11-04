@@ -1430,7 +1430,12 @@ const dragPlane=new THREE.Plane(), dragHit=new THREE.Vector3(); let drag=null; c
 function pickRay(e){ const el=LAB.renderer.domElement, r=el.getBoundingClientRect(); gPick.setFromCamera({x:((e.clientX-r.left)/r.width)*2-1,y:-((e.clientY-r.top)/r.height)*2+1},view.ortho?orthoCam:LAB.camera); return gPick; }
 function groundPoint(e){ const ray=pickRay(e); const d=ray.ray.direction; if(Math.abs(d.y)>0.15) dragPlane.set(new THREE.Vector3(0,1,0),0); else { const n=new THREE.Vector3(d.x,0,d.z).normalize(); dragPlane.setFromNormalAndCoplanarPoint(n,new THREE.Vector3(LAB.S.posX,0,-LAB.S.posY)); } return ray.ray.intersectPlane(dragPlane,dragHit)?{x:dragHit.x,y:-dragHit.z}:null; }
 function massAt(e){ return pickRay(e).intersectObjects(massTargets(),false).length>0; }
-function slideGroups(dx,dy){ for(const g of [lodGroup,dressGroup,LAB.towerGroup,LAB.waterGroup,selHelper]){ if(g) g.position.set(dx,0,-dy); } advGroup.position.set(LAB.S.posX+dx,0,-(LAB.S.posY+dy)); LAB.requestRender(); }
+/* the groups slide from where they rest: each keeps its own height (the uploaded model and the parts sit lowered by the ground level, so the basements stay below grade), and the basements slide with the tower */
+let slideRest=null;
+function slideGroups(dx,dy){ const gs=[lodGroup,dressGroup,LAB.towerGroup,LAB.waterGroup,selHelper,advGroup,belowGroup,partsGroup].filter(Boolean);
+  if(!slideRest||slideRest.gs.some((g,i)=>g!==gs[i])) slideRest={gs,pos:gs.map(g=>g.position.clone())};
+  slideRest.gs.forEach((g,i)=>{ const p=slideRest.pos[i]; g.position.set(p.x+dx,p.y,p.z-dy); });
+  if(!dx&&!dy) slideRest=null; LAB.requestRender(); }
 function hintText(dx,dy){ const S=LAB.S; const x=S.posX+(dx||0), y=S.posY+(dy||0); return `<b>Mass selected</b> · ${x>0?'+':''}${x} m E, ${y>0?'+':''}${y} m N · drag to move · arrows nudge 1 m, Shift 5 m · [ ] rotate · Esc`; }
 vpEl.addEventListener('pointerdown',e=>{ mDown=null; if(e.button!==0||e.target.closest('.viewtools,.clip-panel,.keyplan,.abar,.hud,.compass,.mass-hint')) return; mDown={x:e.clientX,y:e.clientY,b:e.button};
   if(massAt(e)){ const g=groundPoint(e); if(g){ e.stopImmediatePropagation(); vpEl.setPointerCapture(e.pointerId); drag={id:e.pointerId,ox:LAB.S.posX-g.x,oy:LAB.S.posY-g.y,dx:0,dy:0,moved:false}; if(!massSel){ massSel=true; refreshMassSel(); } vpEl.style.cursor='grabbing'; } } },true);
