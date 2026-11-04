@@ -350,7 +350,7 @@ function drawSheet(){ const o=LAB.orbit; const planOn=planActive()&&!clip.captur
     rows.forEach((q,k)=>{ const f=q.f, top=f.z+f.h, prev=rows[k-1], next=rows[k+1];
       for(const [a,b] of q.cut){ uMax=Math.max(uMax,b); uMin=Math.min(uMin,a); }
       // columns: cut ones in poche, the nearest ones beyond in thin line
-      { const CO=colsOf(f), cs=CO.cs; const seen=new Set(); for(const [x,y] of CO.cols){ const w=LAB.toWorld(f,x,y); const dx=w.x-G.p0.x, dy=w.y-G.p0.y; const sd=dx*G.L.x+dy*G.L.y, u=dx*G.r.x+dy*G.r.y; if(Math.abs(sd)<=cs/2+0.05) pr(u-cs/2,u+cs/2,f.z,top-T); else if(sd>0&&inCut(q,u)){ const key=Math.round(u*2); if(seen.has(key)) continue; seen.add(key); pr(u-cs/2,u+cs/2,f.z,top-T,'none',thin); } } }
+      { const CO=colsOf(f), cs=CO.cs; const seen=new Set(); for(const {x,y} of CO.cols){ const w=LAB.toWorld(f,x,y); const dx=w.x-G.p0.x, dy=w.y-G.p0.y; const sd=dx*G.L.x+dy*G.L.y, u=dx*G.r.x+dy*G.r.y; if(Math.abs(sd)<=cs/2+0.05) pr(u-cs/2,u+cs/2,f.z,top-T); else if(sd>0&&inCut(q,u)){ const key=Math.round(u*2); if(seen.has(key)) continue; seen.add(key); pr(u-cs/2,u+cs/2,f.z,top-T,'none',thin); } } }
       // slab over each storey, and under any part not standing on the storey below (the lowest one is the raft or ground slab)
       for(const [a,b] of q.cut) pr(a,b,top-T,top);
       for(const [a,b] of (prev?minus(q.cut,prev.cut):q.cut)) pr(a,b,f.z-(prev?T:(q.below?0.8:T)),f.z);
@@ -383,15 +383,15 @@ function drawSheet(){ const o=LAB.orbit; const planOn=planActive()&&!clip.captur
             pr(s1,Math.min(a1-0.05,s1+1.2),ym-0.2,ym); el('line',{x1:sx(s1).toFixed(1),y1:sy(ym).toFixed(1),x2:sx(s0).toFixed(1),y2:sy(top-T).toFixed(1),stroke:'#6B7078','stroke-width':0.7,'stroke-dasharray':'4 2'},svg); } } } }
       // room tag in every room the cut passes through, so masses either side of a void are each named
       if(Math.abs(ky)*f.h>22) for(const R0 of q.cut){ if(Math.abs(kx)*(R0[1]-R0[0])<44) continue; const free=minus([R0],q.core.map(([c0,c1])=>[c0-0.8,c1+0.8])).sort((A,B)=>(B[1]-B[0])-(A[1]-A[0])); const FR=free[0]; if(!FR||Math.abs(kx)*(FR[1]-FR[0])<44) continue; const mid=(FR[0]+FR[1])/2; const pr2=LAB.PROG&&LAB.PROG[f.prog];
-        const t=el('text',{x:sx(mid).toFixed(1),y:(sy(f.z+(f.h-T)/2)+3).toFixed(1),'text-anchor':'middle','font-size':9,'letter-spacing':'0.05em',fill:'#5F646B','font-family':'var(--font-b),sans-serif',stroke:'#fff','stroke-width':3,'paint-order':'stroke'},svg); t.textContent=q.below?'BASEMENT':((pr2&&pr2.name)||'FLOOR').toUpperCase(); }
+        const t=el('text',{x:sx(mid).toFixed(1),y:(sy(f.z+(f.h-T)/2)+3).toFixed(1),'text-anchor':'middle','font-size':9,'letter-spacing':'0.05em',fill:'#5F646B','font-family':'var(--font-b),sans-serif',stroke:'#fff','stroke-width':3,'paint-order':'stroke'},svg); const bp2=q.below&&LAB.S.belowProg&&LAB.PROG[LAB.S.belowProg[f.bi]]; t.textContent=q.below?(bp2?bp2.name.toUpperCase():'BASEMENT'):((pr2&&pr2.name)||'FLOOR').toUpperCase(); }
     });
   }
   if(sec&&uMax>-1e8){ const {rows}=sectionCut(); const F0=F[0]; const zTop=F.length?F[F.length-1].z+F[F.length-1].h:0, zBot=B.length?Math.min(...B.map(f=>f.z))-0.8:-0.5;
     const dimH=(u0,u1,y,label)=>{ const a=[sx(u0),sy(y)], b=[sx(u1),sy(y)]; el('line',{x1:a[0].toFixed(1),y1:a[1].toFixed(1),x2:b[0].toFixed(1),y2:b[1].toFixed(1),stroke:ink,'stroke-width':0.6},svg); for(const p of [a,b]) el('line',{x1:(p[0]-3).toFixed(1),y1:(p[1]+3).toFixed(1),x2:(p[0]+3).toFixed(1),y2:(p[1]-3).toFixed(1),stroke:ink,'stroke-width':1},svg); if(Math.abs(b[0]-a[0])>34){ const t=el('text',{x:((a[0]+b[0])/2).toFixed(1),y:(a[1]-4).toFixed(1),'text-anchor':'middle','font-size':9.5,fill:ink,'font-family':'var(--font-m),monospace'},svg); t.textContent=label; } };
     const dimV=(u,y0,y1,label)=>{ const a=[sx(u),sy(y0)], b=[sx(u),sy(y1)]; el('line',{x1:a[0].toFixed(1),y1:a[1].toFixed(1),x2:b[0].toFixed(1),y2:b[1].toFixed(1),stroke:ink,'stroke-width':0.6},svg); for(const p of [a,b]) el('line',{x1:(p[0]-3).toFixed(1),y1:(p[1]+3).toFixed(1),x2:(p[0]+3).toFixed(1),y2:(p[1]-3).toFixed(1),stroke:ink,'stroke-width':1},svg); if(Math.abs(b[1]-a[1])>26){ const cx=a[0]-4, cy=(a[1]+b[1])/2; const t=el('text',{x:cx.toFixed(1),y:cy.toFixed(1),'text-anchor':'middle','font-size':9.5,fill:ink,'font-family':'var(--font-m),monospace',transform:`rotate(-90 ${cx.toFixed(1)} ${cy.toFixed(1)})`},svg); t.textContent=label; } };
     // structural grid where the cut crosses it: dash-dot lines, bubbles above the roof, spacing dimensioned
-    if(F0){ const C=colsOf(F0); const l0=LAB.toLocal(F0,G.p0.x,G.p0.y), l1=LAB.toLocal(F0,G.p0.x+G.r.x,G.p0.y+G.r.y); const du={x:l1.x-l0.x,y:l1.y-l0.y}; const cr=[];
-      if(Math.abs(du.x)>0.15) C.gx.forEach((x,i)=>cr.push([(x-l0.x)/du.x,String(i+1)])); if(Math.abs(du.y)>0.15) C.gy.forEach((y,j)=>cr.push([(y-l0.y)/du.y,String.fromCharCode(65+(j%26))]));
+    if(F0){ const TG=towerGrid(); const l0=toT(G.p0.x,G.p0.y), l1=toT(G.p0.x+G.r.x,G.p0.y+G.r.y); const du={x:l1.x-l0.x,y:l1.y-l0.y}; const cr=[];
+      if(Math.abs(du.x)>0.15) TG.X.forEach((x,i)=>cr.push([(x-l0.x)/du.x,TG.labX[i]])); if(Math.abs(du.y)>0.15) TG.Y.forEach((y,j)=>cr.push([(y-l0.y)/du.y,TG.labY[j]]));
       const gl=cr.filter(([u])=>u>uMin-1&&u<uMax+1).sort((a,b)=>a[0]-b[0]); const yb=sy(zBot-2), yt=sy(zTop+5);
       gl.forEach(([u,lab])=>{ const x=sx(u); el('line',{x1:x.toFixed(1),x2:x.toFixed(1),y1:yb.toFixed(1),y2:yt.toFixed(1),stroke:'#8A8F96','stroke-width':0.6,'stroke-dasharray':'14 3 2 3'},svg); el('circle',{cx:x.toFixed(1),cy:(yt-9).toFixed(1),r:9,fill:'#fff',stroke:ink,'stroke-width':0.9},svg); const t=el('text',{x:x.toFixed(1),y:(yt-5.5).toFixed(1),'text-anchor':'middle','font-size':10,'font-weight':600,fill:ink,'font-family':'var(--font-m),monospace'},svg); t.textContent=lab; });
       for(let i=0;i+1<gl.length;i++) dimH(gl[i][0],gl[i+1][0],zTop+2.2,(gl[i+1][0]-gl[i][0]).toFixed(2)); }
@@ -441,14 +441,20 @@ function chainSegs(segs){ const key=p=>Math.round(p[0]*500)+','+Math.round(p[1]*
     (closed?loops:open).push(pts); } return {loops,open}; }
 function planPanel(){ let K=document.getElementById('planpanel'); if(K) return K; const vp=$('viewport');
   K=document.createElement('div'); K.id='planpanel'; K.className='keyplan planpanel';
-  K.innerHTML=`<div class="kp-head"><b id="pp-title">Floor plan</b><span id="pp-sub"></span></div><div class="pp-row"><button type="button" id="pp-down" title="Level below" aria-label="Level below">▼</button><select id="pp-level" aria-label="Level"></select><button type="button" id="pp-up" title="Level above" aria-label="Level above">▲</button></div><div class="pp-row"><button type="button" id="pp-draw" class="pp-wide" aria-pressed="false">Draw a section cut</button><button type="button" id="pp-open" class="pp-wide">Open section A–A</button></div><label class="pp-check"><input type="checkbox" id="pp-grid" checked> Grids and dimensions</label><p class="kp-hint">On the plan: drag the A–A line to move it, drag an orange dot to turn it, click a bubble to flip, double-click to open the section.</p><div class="pp-legend"><span><i class="lg-cut"></i>Cut</span><span><i class="lg-glass"></i>Glazing</span><span><i class="lg-below"></i>Below</span><span><i class="lg-over"></i>Above</span></div>`;
+  K.innerHTML=`<div class="kp-head"><b id="pp-title">Floor plan</b><span id="pp-sub"></span></div><div class="pp-row"><button type="button" id="pp-down" title="Level below" aria-label="Level below">▼</button><select id="pp-level" aria-label="Level"></select><button type="button" id="pp-up" title="Level above" aria-label="Level above">▲</button></div><div class="pp-row"><button type="button" id="pp-draw" class="pp-wide" aria-pressed="false">Draw a section cut</button><button type="button" id="pp-open" class="pp-wide">Open section A–A</button></div><label class="pp-check"><input type="checkbox" id="pp-grid" checked> Grids and dimensions</label><details class="pp-gridbox" id="pp-gridbox"><summary>Structural grid</summary><div class="pp-g"><label>Layout<select id="pg-mode"><option value="fit">Fit bays to the plate</option><option value="fixed">Fixed spacing</option></select></label><label>Bays along x<span><input type="number" id="pg-sx" min="3" max="24" step="0.3"> m</span></label><label>Bays along y<span><input type="number" id="pg-sy" min="3" max="24" step="0.3"> m</span></label><label class="pg-fixed">Offset x<span><input type="number" id="pg-ox" step="0.1"> m</span></label><label class="pg-fixed">Offset y<span><input type="number" id="pg-oy" step="0.1"> m</span></label><label>Edge inset<span><input type="number" id="pg-inset" min="0" max="6" step="0.1"> m</span></label><label>Column size<span><input type="number" id="pg-cs" min="0.3" max="2.5" step="0.05"> m</span></label></div><p class="kp-hint" id="pg-count"></p><p class="kp-hint">Click a column to remove it from every floor, Shift-click for this floor only; click a dashed one to put it back.</p><button type="button" id="pg-restore" class="pp-wide">Restore all columns</button></details><p class="kp-hint">On the plan: drag the A–A line to move it, drag an orange dot to turn it, click a bubble to flip, double-click to open the section.</p><div class="pp-legend"><span><i class="lg-cut"></i>Cut</span><span><i class="lg-glass"></i>Glazing</span><span><i class="lg-below"></i>Below</span><span><i class="lg-over"></i>Above</span></div>`;
   vp.appendChild(K); K.addEventListener('pointerdown',e=>e.stopPropagation()); K.addEventListener('wheel',e=>e.stopPropagation());
   const sel=K.querySelector('#pp-level'); sel.onchange=()=>{ const [k,i]=sel.value.split(':'); PLAN.lv={kind:k,i:+i||0}; planFrame(false); };
   const step=d=>{ const o=[...sel.options]; let j=sel.selectedIndex-d; j=Math.max(0,Math.min(o.length-1,j)); sel.selectedIndex=j; sel.onchange(); };
   K.querySelector('#pp-up').onclick=()=>step(1); K.querySelector('#pp-down').onclick=()=>step(-1);
   K.querySelector('#pp-draw').onclick=()=>{ PLAN.drawCut=!PLAN.drawCut; syncDrawBtn(); }; K.querySelector('#pp-open').onclick=()=>{ PLAN.drawCut=false; syncDrawBtn(); openSection(); };
+  for(const id of ['pg-mode','pg-sx','pg-sy','pg-ox','pg-oy','pg-inset','pg-cs']) K.querySelector('#'+id).addEventListener('change',()=>{ const G=gridCfg(); G.mode=K.querySelector('#pg-mode').value; for(const [k,i] of [['sx','pg-sx'],['sy','pg-sy'],['ox','pg-ox'],['oy','pg-oy'],['inset','pg-inset'],['cs','pg-cs']]){ const v=parseFloat(K.querySelector('#'+i).value); if(isFinite(v)) G[k]=v; } G.sx=Math.max(3,Math.min(24,G.sx)); G.sy=Math.max(3,Math.min(24,G.sy)); G.cs=Math.max(0.3,Math.min(2.5,G.cs)); G.inset=Math.max(0,Math.min(6,G.inset)); GRIDV++; SHEET.key=null; persist(); syncGridUI(); LAB.requestRender(); });
+  K.querySelector('#pg-restore').onclick=()=>{ gridCfg().removed={}; GRIDV++; SHEET.key=null; persist(); syncGridUI(); LAB.requestRender(); };
+  setTimeout(syncGridUI,0);
   K.querySelector('#pp-grid').onchange=e=>{ PLAN.grid=e.target.checked; LAB.requestRender(); };
   return K; }
+function syncGridUI(){ const K=document.getElementById('planpanel'); if(!K) return; const G=gridCfg(); const set=(id,v)=>{ const e=K.querySelector('#'+id); if(e&&document.activeElement!==e) e.value=v; };
+  set('pg-mode',G.mode); set('pg-sx',G.sx); set('pg-sy',G.sy); set('pg-ox',G.ox); set('pg-oy',G.oy); set('pg-inset',G.inset); set('pg-cs',G.cs); K.querySelectorAll('.pg-fixed').forEach(l=>l.hidden=G.mode!=='fixed');
+  const TG=towerGrid(), f=planFloor(); const n=Object.keys(G.removed).length; const c=f?colsOf(f):null; const cnt=K.querySelector('#pg-count'); if(cnt) cnt.textContent=`Grid ${TG.X.length} × ${TG.Y.length} lines${G.mode==='fit'?` · bays ${(TG.X.length>1?(TG.X[1]-TG.X[0]):0).toFixed(2)} × ${(TG.Y.length>1?(TG.Y[1]-TG.Y[0]):0).toFixed(2)} m`:''}${c?` · ${c.cols.length} columns on this floor`:''}${n?` · ${n} removed`:''}`; }
 function planPanelSync(){ const K=planPanel(); K.hidden=false; const sel=K.querySelector('#pp-level'); const F=LAB.floors||[], B=belowSorted(); const sg=v=>(v>0.005?'+':v<-0.005?'−':'±')+Math.abs(v).toFixed(2);
   const opts=[['site:0','Site · roof plan']].concat(F.map((f,i)=>['above:'+i,`L${i+1} · ${sg(f.z)}`]).reverse(),B.map((f,i)=>['below:'+i,`B${i+1} · ${sg(f.z)}`]));
   const want=PLAN.lv.kind+':'+(PLAN.lv.kind==='site'?0:PLAN.lv.i); const sig=opts.map(o=>o[0]+o[1]).join('|'); if(sel.dataset.sig!==sig){ sel.innerHTML=opts.map(([v,l])=>`<option value="${v}">${l}</option>`).join(''); sel.dataset.sig=sig; } sel.value=want; if(sel.value!==want) sel.value='above:0';
@@ -469,11 +475,27 @@ const inCoreRect=(list,x,y,pad)=>list.find(r=>x>=r.x0-(pad||0)&&x<=r.x1+(pad||0)
 /* shared by the plan and the section: the plate's bounds in its own axes, the column grid, and the core layout */
 function plateBounds(f){ let bx0=1e9,bx1=-1e9,by0=1e9,by1=-1e9; for(const lp of LAB.maskLoops(f)) for(const p of lp.pts){ bx0=Math.min(bx0,p[0]); bx1=Math.max(bx1,p[0]); by0=Math.min(by0,p[1]); by1=Math.max(by1,p[1]); } return {bx0,bx1,by0,by1}; }
 function insideF(f,lx,ly){ const m=f.mask; if(!m) return false; const ix=Math.floor(lx-m.x0), iy=Math.floor(ly-m.y0); return ix>=0&&iy>=0&&ix<m.nx&&iy<m.ny&&!!m.cells[iy*m.nx+ix]&&lx<=f.w/2&&ly<=f.d/2; }
-/* perimeter columns on a grid of about 9 m, plus interior columns where the span from the core passes 12 m (indicative: the model has no structure) */
-function colsOf(f){ const ck=LAB.S.posX+','+LAB.S.posY+','+LAB.S.rotDeg; if(f._cols&&f._cols.key===ck) return f._cols; const {bx0,bx1,by0,by1}=plateBounds(f); const gx=[], gy=[]; const nx=Math.max(1,Math.round((bx1-bx0-1.8)/9)), ny=Math.max(1,Math.round((by1-by0-1.8)/9)); for(let i=0;i<=nx;i++) gx.push(bx0+0.9+i*(bx1-bx0-1.8)/nx); for(let j=0;j<=ny;j++) gy.push(by0+0.9+j*(by1-by0-1.8)/ny);
-  const CR=coreRectsOf(f), cols=[]; const dcore=(x,y)=>CR.length?Math.min(...CR.map(r=>Math.max(r.x0-x,x-r.x1,r.y0-y,y-r.y1))):1e9;
-  for(const x of gx) for(const y of gy){ if(!insideF(f,x,y)) continue; const edge=[[1.9,0],[-1.9,0],[0,1.9],[0,-1.9]].some(([dx,dy])=>!insideF(f,x+dx,y+dy)); const dc=dcore(x,y); if(!edge&&dc<12) continue; if(dc<1.2) continue; cols.push([x,y]); }
-  f._cols={key:ck,gx,gy,cols,cs:f.below?0.9:0.8}; return f._cols; }
+/* the structural grid: one grid for the tower, in the tower's own axes (centre at the tower position, turned with it).
+   Fit: the bays divide each direction evenly between the plate edges less the inset. Fixed: lines at the set spacing from the offset.
+   A column stands at every intersection inside the floor plate and clear of the core, unless it was removed (for every floor, or for one). */
+function gridCfg(){ const S=LAB.S; if(!S.grid) S.grid={mode:'fit',sx:9,sy:9,ox:0,oy:0,inset:0.9,cs:0.8,removed:{}}; if(!S.grid.removed) S.grid.removed={}; return S.grid; }
+let GRIDV=0;
+function toT(x,y){ const S=LAB.S, a=-S.rotDeg*Math.PI/180, c=Math.cos(a), s=Math.sin(a), dx=x-S.posX, dy=y-S.posY; return {x:dx*c-dy*s,y:dx*s+dy*c}; }
+function fromT(x,y){ const S=LAB.S, a=S.rotDeg*Math.PI/180, c=Math.cos(a), s=Math.sin(a); return {x:S.posX+x*c-y*s,y:S.posY+x*s+y*c}; }
+function floorExtT(f){ let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9; for(const lp of LAB.maskLoops(f)) for(const p of lp.pts){ const w=LAB.toWorld(f,p[0],p[1]), t=toT(w.x,w.y); x0=Math.min(x0,t.x); x1=Math.max(x1,t.x); y0=Math.min(y0,t.y); y1=Math.max(y1,t.y); } return {x0,x1,y0,y1}; }
+function towerGrid(){ const G=gridCfg(), F=(LAB.floors||[]).concat(LAB.belowFloors||[]); const key=[F.length&&F[0],F.length,LAB.S.posX,LAB.S.posY,LAB.S.rotDeg,G.mode,G.sx,G.sy,G.ox,G.oy,G.inset,G.cs,GRIDV].join('|'); if(towerGrid.c&&towerGrid.c.key===key) return towerGrid.c;
+  const E={x0:1e9,x1:-1e9,y0:1e9,y1:-1e9}; for(const f of F){ const e=floorExtT(f); E.x0=Math.min(E.x0,e.x0); E.x1=Math.max(E.x1,e.x1); E.y0=Math.min(E.y0,e.y0); E.y1=Math.max(E.y1,e.y1); } if(E.x0>E.x1){ E.x0=E.y0=-15; E.x1=E.y1=15; }
+  const lines=(a,b,sp,o)=>{ const lo=a+G.inset, hi=b-G.inset, s=Math.max(1,+sp||9), out=[]; if(hi<=lo) return [(a+b)/2];
+    if(G.mode==='fit'){ const n=Math.max(1,Math.round((hi-lo)/s)); for(let i=0;i<=n;i++) out.push(lo+i*(hi-lo)/n); }
+    else { const k0=Math.ceil((lo-o)/s-1e-6), k1=Math.floor((hi-o)/s+1e-6); for(let k=k0;k<=k1;k++) out.push(o+k*s); } return out; };
+  const X=lines(E.x0,E.x1,G.sx,+G.ox||0), Y=lines(E.y0,E.y1,G.sy,+G.oy||0);
+  towerGrid.c={key,X,Y,E,labX:X.map((_,i)=>String(i+1)),labY:Y.map((_,j)=>String.fromCharCode(65+(j%26))+(j>=26?String(Math.floor(j/26)):''))}; return towerGrid.c; }
+const floorKey=f=>(f.below?'b':'')+f.i;
+function colsOf(f){ const G=gridCfg(), TG=towerGrid(); const ck=TG.key+'|'+f.z.toFixed(2)+'|'+JSON.stringify(G.removed).length; if(f._cols&&f._cols.key===ck) return f._cols;
+  const CR=coreRectsOf(f), cols=[], ghosts=[], fk=floorKey(f);
+  TG.X.forEach((x,i)=>TG.Y.forEach((y,j)=>{ const w=fromT(x,y), l=LAB.toLocal(f,w.x,w.y); if(!insideF(f,l.x,l.y)) return; if(inCoreRect(CR,l.x,l.y,0.6)) return; const id=i+','+j; const off=G.removed[id]?'all':(G.removed[id+'@'+fk]?'floor':null); (off?ghosts:cols).push({x:l.x,y:l.y,i,j,id,off}); }));
+  f._cols={key:ck,cols,ghosts,cs:(+G.cs||0.8)*(f.below?1.12:1),TG}; return f._cols; }
+function toggleCol(id,off,floorOnly){ const G=gridCfg(), f=planFloor(); const fk=f?floorKey(f):''; if(off==='all') delete G.removed[id]; else if(off==='floor') delete G.removed[id+'@'+fk]; else if(floorOnly) G.removed[id+'@'+fk]=1; else G.removed[id]=1; GRIDV++; SHEET.key=null; persist(); syncGridUI(); LAB.requestRender(); }
 /* core as a room: walls, a lift bank along its west wall, a lobby, two stairs to the east */
 function coreLayout(x0,x1,y0,y1){ const T=0.3, cw=x1-x0, cd=y1-y0; const lob=Math.min(3.2,cw*0.22), nLift=Math.max(2,Math.min(8,Math.ceil(((LAB.floors||[]).length)/9))); const liftW=Math.min(2.6,Math.max(1.8,(cd-2*T)/Math.max(1,nLift)));
   const fits=cw>=liftW+lob+3.2&&cd>=5; return {T,cw,cd,lob,nLift,liftW,xl:x0+T,xs:x0+T+liftW+0.2+lob,fits}; }
@@ -522,8 +544,10 @@ function drawPlan(svg,W,H){ const f=planFloor(); const S=LAB.S, zc=planCutZ(f), 
   for(const g of cut.stair) el('path',{d:worldPath(g.loops,true)+' '+worldPath(g.open,false),fill:'none',stroke:ink,'stroke-width':0.9},svg);
   const {bx0,bx1,by0,by1}=plateBounds(f); const inside=(lx,ly)=>insideF(f,lx,ly);
   const cl=LAB.toLocal(f,S.posX,S.posY), c=f.core||0, ch=c/2;
-  const CO=colsOf(f), gx=CO.gx, gy=CO.gy;
-  if(!has('structure')){ const cs=CO.cs; for(const [x,y] of CO.cols) quadL(f,[[x-cs/2,y-cs/2],[x+cs/2,y-cs/2],[x+cs/2,y+cs/2],[x-cs/2,y+cs/2]],poche); }
+  const CO=colsOf(f), TG=CO.TG;
+  if(!has('structure')){ const cs=CO.cs, sq=(x,y)=>[[x-cs/2,y-cs/2],[x+cs/2,y-cs/2],[x+cs/2,y+cs/2],[x-cs/2,y+cs/2]]; const hit=(c,extra)=>{ const p=Lw(f,c.x,c.y); el('circle',Object.assign({cx:p[0].toFixed(1),cy:p[1].toFixed(1),r:Math.max(7,cs*k*0.8).toFixed(1),fill:'transparent','data-col':c.id,style:'pointer-events:all;cursor:pointer'},extra||{}),svg).appendChild(Object.assign(document.createElementNS(NS,'title'),{textContent:`Column ${TG.labX[c.i]}–${TG.labY[c.j]} · click to ${c.off?'put it back':'remove it from every floor · Shift-click for this floor only'}`})); };
+    for(const c of CO.cols){ quadL(f,sq(c.x,c.y),poche); hit(c); }
+    if(!tiny) for(const c of CO.ghosts){ quadL(f,sq(c.x,c.y),{fill:'none',stroke:'#E8692B','stroke-width':0.9,'stroke-dasharray':'3 2'}); hit(c,{'data-off':c.off}); } }
   // core: walls, a bank of lifts on one side of a lobby, two stairs on the other, doors into the lobby
   const coreRoom=(x0,x1,y0,y1)=>{ const R=(a,b,cc,d,at)=>quadL(f,[[a,cc],[b,cc],[b,d],[a,d]],at||poche); R(x0,x1,y0,y1,{fill:'#fff'}); const LY=coreLayout(x0,x1,y0,y1), T=LY.T, cd=LY.cd, lob=LY.lob, nLift=LY.nLift, liftW=LY.liftW, xl=LY.xl, xs=LY.xs;
     R(x0,x1,y0,y0+T); R(x0,x1,y1-T,y1); R(x0,x0+T,y0,y1); R(x1-T,x1,y0,y1);
@@ -555,21 +579,21 @@ function drawPlan(svg,W,H){ const f=planFloor(); const S=LAB.S, zc=planCutZ(f), 
   // overhead: the floor above, dashed (drawn last among the lines so it reads over the plate)
   if(fa) el('path',{d:loopsPath(fa),fill:'none',stroke:'#4B5057','stroke-width':0.8,'stroke-dasharray':'6 3','fill-rule':'evenodd'},svg);
   // grids and dimensions
-  if(PLAN.grid&&!tiny){ const ext=5.5, br=9; const gl={stroke:'#8A8F96','stroke-width':0.6,'stroke-dasharray':'14 3 2 3'}; const txt=(p,s,size)=>{ const t=el('text',{x:p[0].toFixed(1),y:(p[1]+3.5).toFixed(1),'text-anchor':'middle','font-size':size||10,fill:ink,'font-family':'var(--font-m),monospace',stroke:'#fff','stroke-width':3,'paint-order':'stroke'},svg); t.textContent=s; return t; };
+  if(PLAN.grid&&!tiny){ const e=floorExtT(f), LT=(tx,ty)=>{ const w=fromT(tx,ty); return px(w.x,w.y); }; const ext=5.5, br=9; const gl={stroke:'#8A8F96','stroke-width':0.6,'stroke-dasharray':'14 3 2 3'}; const txt=(p,s,size)=>{ const t=el('text',{x:p[0].toFixed(1),y:(p[1]+3.5).toFixed(1),'text-anchor':'middle','font-size':size||10,fill:ink,'font-family':'var(--font-m),monospace',stroke:'#fff','stroke-width':3,'paint-order':'stroke'},svg); t.textContent=s; return t; };
     const bubble=(p,s)=>{ el('circle',{cx:p[0].toFixed(1),cy:p[1].toFixed(1),r:br,fill:'#fff',stroke:ink,'stroke-width':0.9},svg); const t=el('text',{x:p[0].toFixed(1),y:(p[1]+3.5).toFixed(1),'text-anchor':'middle','font-size':10,'font-weight':600,fill:ink,'font-family':'var(--font-m),monospace'},svg); t.textContent=s; };
     const away=(p,q,dist)=>{ const dx=p[0]-q[0], dy=p[1]-q[1], L=Math.hypot(dx,dy)||1; return [p[0]+dx/L*dist,p[1]+dy/L*dist]; };
-    gx.forEach((x,i)=>{ const a=Lw(f,x,by0-ext), b=Lw(f,x,by1+ext); el('line',{x1:a[0].toFixed(1),y1:a[1].toFixed(1),x2:b[0].toFixed(1),y2:b[1].toFixed(1),...gl},svg); bubble(away(b,a,br),String(i+1)); });
-    gy.forEach((y,j)=>{ const a=Lw(f,bx1+ext,y), b=Lw(f,bx0-ext,y); el('line',{x1:a[0].toFixed(1),y1:a[1].toFixed(1),x2:b[0].toFixed(1),y2:b[1].toFixed(1),...gl},svg); bubble(away(b,a,br),String.fromCharCode(65+(j%26))); });
-    const dim=(A,B,off,label)=>{ const a=Lw(f,A[0],A[1]), b=Lw(f,B[0],B[1]); el('line',{x1:a[0].toFixed(1),y1:a[1].toFixed(1),x2:b[0].toFixed(1),y2:b[1].toFixed(1),stroke:ink,'stroke-width':0.6},svg);
+    TG.X.forEach((x,i)=>{ const a=LT(x,e.y0-ext), b=LT(x,e.y1+ext); el('line',{x1:a[0].toFixed(1),y1:a[1].toFixed(1),x2:b[0].toFixed(1),y2:b[1].toFixed(1),...gl},svg); bubble(away(b,a,br),TG.labX[i]); });
+    TG.Y.forEach((y,j)=>{ const a=LT(e.x1+ext,y), b=LT(e.x0-ext,y); el('line',{x1:a[0].toFixed(1),y1:a[1].toFixed(1),x2:b[0].toFixed(1),y2:b[1].toFixed(1),...gl},svg); bubble(away(b,a,br),TG.labY[j]); });
+    const dim=(A,B,off,label)=>{ const a=LT(A[0],A[1]), b=LT(B[0],B[1]); el('line',{x1:a[0].toFixed(1),y1:a[1].toFixed(1),x2:b[0].toFixed(1),y2:b[1].toFixed(1),stroke:ink,'stroke-width':0.6},svg);
       const dx=b[0]-a[0], dy=b[1]-a[1], L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L; for(const p of [a,b]) el('line',{x1:(p[0]-(ux-uy)*3).toFixed(1),y1:(p[1]-(uy+ux)*3).toFixed(1),x2:(p[0]+(ux-uy)*3).toFixed(1),y2:(p[1]+(uy+ux)*3).toFixed(1),stroke:ink,'stroke-width':1},svg);
       if(L>34) txt([(a[0]+b[0])/2-uy*off,(a[1]+b[1])/2+ux*off],label,9.5); };
-    const yd=by0-2.6, yo=by0-4.4, xd=bx1+2.6, xo=bx1+4.4;
-    for(let i=0;i+1<gx.length;i++) dim([gx[i],yd],[gx[i+1],yd],-8,(gx[i+1]-gx[i]).toFixed(2)); dim([bx0,yo],[bx1,yo],-8,(bx1-bx0).toFixed(2));
-    for(let j=0;j+1<gy.length;j++) dim([xd,gy[j]],[xd,gy[j+1]],-8,(gy[j+1]-gy[j]).toFixed(2)); dim([xo,by0],[xo,by1],-8,(by1-by0).toFixed(2));
+    const yd=e.y0-2.6, yo=e.y0-4.4, xd=e.x1+2.6, xo=e.x1+4.4;
+    for(let i=0;i+1<TG.X.length;i++) dim([TG.X[i],yd],[TG.X[i+1],yd],-8,(TG.X[i+1]-TG.X[i]).toFixed(2)); dim([e.x0,yo],[e.x1,yo],-8,(e.x1-e.x0).toFixed(2));
+    for(let j=0;j+1<TG.Y.length;j++) dim([xd,TG.Y[j]],[xd,TG.Y[j+1]],-8,(TG.Y[j+1]-TG.Y[j]).toFixed(2)); dim([xo,e.y0],[xo,e.y1],-8,(e.y1-e.y0).toFixed(2));
   }
   // room tag on the deepest side of the core
   if(!tiny){ const CR0=coreRectsOf(f)[0]||{x0:cl.x,x1:cl.x,y0:cl.y,y1:cl.y}; const ccx=(CR0.x0+CR0.x1)/2, ccy=(CR0.y0+CR0.y1)/2, hx=(CR0.x1-CR0.x0)/2, hy=(CR0.y1-CR0.y0)/2; const sides=[[1,0,bx1-CR0.x1,hx],[-1,0,CR0.x0-bx0,hx],[0,1,by1-CR0.y1,hy],[0,-1,CR0.y0-by0,hy]].sort((a,b)=>b[2]-a[2]); const sd=sides[0]; const tx=ccx+sd[0]*(sd[3]+sd[2]/2), ty=ccy+sd[1]*(sd[3]+sd[2]/2);
-    if(inside(tx,ty)){ let p=Lw(f,tx,ty); if(clip.kind==='v'){ const G=secGeom(), w=LAB.toWorld(f,tx,ty); const dd=(w.x-G.p0.x)*G.L.x+(w.y-G.p0.y)*G.L.y; if(Math.abs(dd)<3.5){ const sh=(dd>=0?1:-1)*(3.5-Math.abs(dd)); p=px(w.x+G.L.x*sh,w.y+G.L.y*sh); } } const gross=f.area||(f.mask?f.mask.cells.reduce((a,b)=>a+b,0):0); const pr=LAB.PROG&&LAB.PROG[f.prog]; const nm=below?'BASEMENT':((pr&&pr.name)||'FLOOR').toUpperCase(); const t1=el('text',{x:p[0].toFixed(1),y:(p[1]-2).toFixed(1),'text-anchor':'middle','font-size':11,'font-weight':600,'letter-spacing':'0.06em',fill:ink,'font-family':'var(--font-b),sans-serif',stroke:'#fff','stroke-width':3,'paint-order':'stroke'},svg); t1.textContent=nm;
+    if(inside(tx,ty)){ let p=Lw(f,tx,ty); if(clip.kind==='v'){ const G=secGeom(), w=LAB.toWorld(f,tx,ty); const dd=(w.x-G.p0.x)*G.L.x+(w.y-G.p0.y)*G.L.y; if(Math.abs(dd)<3.5){ const sh=(dd>=0?1:-1)*(3.5-Math.abs(dd)); p=px(w.x+G.L.x*sh,w.y+G.L.y*sh); } } const gross=f.area||(f.mask?f.mask.cells.reduce((a,b)=>a+b,0):0); const pr=LAB.PROG&&LAB.PROG[f.prog]; const bp=below&&LAB.S.belowProg&&LAB.PROG[LAB.S.belowProg[f.bi]]; const nm=below?(bp?bp.name.toUpperCase():'BASEMENT'):((pr&&pr.name)||'FLOOR').toUpperCase(); const t1=el('text',{x:p[0].toFixed(1),y:(p[1]-2).toFixed(1),'text-anchor':'middle','font-size':11,'font-weight':600,'letter-spacing':'0.06em',fill:ink,'font-family':'var(--font-b),sans-serif',stroke:'#fff','stroke-width':3,'paint-order':'stroke'},svg); t1.textContent=nm;
       const t2=el('text',{x:p[0].toFixed(1),y:(p[1]+12).toFixed(1),'text-anchor':'middle','font-size':10,fill:'#5F646B','font-family':'var(--font-m),monospace',stroke:'#fff','stroke-width':3,'paint-order':'stroke'},svg); t2.textContent=`${Math.round(gross).toLocaleString()} m² gross`; } }
   // the section line, A–A: drag the line to move it, drag an end dot to turn it, click a bubble to flip, double-click it to open the section; Draw a cut sketches a new one
   if(clip.kind==='v'){ const G=secGeom(); const Rr=Math.max(bx1-bx0,by1-by0)*0.5+Math.abs(clip.off)+9; const a=px(G.p0.x-G.r.x*Rr,G.p0.y-G.r.y*Rr), b=px(G.p0.x+G.r.x*Rr,G.p0.y+G.r.y*Rr); const live={'pointer-events':'auto'};
@@ -590,13 +614,15 @@ function cutEdit(p,live){ Object.assign(clip,p,{kind:'v'}); if(view.section){ co
 (function planSecEdit(){ const vp=document.getElementById('viewport');
   const toPlan=e=>{ const pb=SHEET.pb, cr=LAB.renderer.domElement.getBoundingClientRect(); if(!pb) return null; const sx=e.clientX-cr.left-pb.O[0], sy=e.clientY-cr.top-pb.O[1]; const det=pb.ax[0]*pb.ay[1]-pb.ax[1]*pb.ay[0]; if(Math.abs(det)<1e-9) return null; return {x:(sx*pb.ay[1]-sy*pb.ay[0])/det,y:(pb.ax[0]*sy-pb.ax[1]*sx)/det}; };
   vp.addEventListener('pointerdown',e=>{ if(!planActive()||e.button!==0) return; if(e.target.closest&&e.target.closest('.viewtools,.clip-panel,.keyplan,.abar,.mass-hint')) return; const t=e.target.closest&&e.target.closest('[data-sec]'); const p=toPlan(e); if(!p) return;
+    const colEl=e.target.closest&&e.target.closest('[data-col]'); if(colEl&&!PLAN.drawCut){ e.stopImmediatePropagation(); e.preventDefault(); vp.setPointerCapture(e.pointerId); secDrag={id:e.pointerId,part:'col',col:colEl.dataset.col,off:colEl.dataset.off||null,shift:e.shiftKey,x:e.clientX,y:e.clientY,moved:false}; return; }
     if(!t&&!PLAN.drawCut) return; e.stopImmediatePropagation(); e.preventDefault(); vp.setPointerCapture(e.pointerId);
     secDrag={id:e.pointerId,part:t?t.dataset.sec:'draw',a:p,b:null,x:e.clientX,y:e.clientY,moved:false}; },true);
-  vp.addEventListener('pointermove',e=>{ if(!secDrag||e.pointerId!==secDrag.id) return; e.stopImmediatePropagation(); const p=toPlan(e); if(!p) return; secDrag.moved=secDrag.moved||Math.hypot(e.clientX-secDrag.x,e.clientY-secDrag.y)>3; if(!secDrag.moved) return; const G=secGeom(), S=LAB.S;
+  vp.addEventListener('pointermove',e=>{ if(!secDrag||e.pointerId!==secDrag.id) return; e.stopImmediatePropagation(); secDrag.moved=secDrag.moved||Math.hypot(e.clientX-secDrag.x,e.clientY-secDrag.y)>3; if(secDrag.part==='col'||!secDrag.moved) return; const p=toPlan(e); if(!p) return; const G=secGeom(), S=LAB.S;
     if(secDrag.part==='draw'){ secDrag.b=p; LAB.requestRender(); return; }
     if(secDrag.part==='line'){ const off=(p.x-S.posX)*G.d.x+(p.y-S.posY)*G.d.y; cutEdit({off:e.altKey?Math.round(off*10)/10:Math.round(off*2)/2},true); }
     else if(secDrag.part==='endL'||secDrag.part==='endR'){ let a=Math.atan2(p.y-G.p0.y,p.x-G.p0.x)+(secDrag.part==='endL'?Math.PI:0); if(!e.altKey) a=Math.round(a/(Math.PI/36))*(Math.PI/36); const fl=clip.flip; const th=a-(fl?Math.PI:0); const d={x:Math.sin(th),y:-Math.cos(th)}; cutEdit({ang:th,off:(G.p0.x-S.posX)*d.x+(G.p0.y-S.posY)*d.y},true); } },true);
   const end=e=>{ if(!secDrag||e.pointerId!==secDrag.id) return; const d=secDrag; secDrag=null; e.stopImmediatePropagation(); try{ vp.releasePointerCapture(e.pointerId); }catch(x){}
+    if(d.part==='col'){ if(!d.moved) toggleCol(d.col,d.off,d.shift); return; }
     if(d.part==='draw'){ if(d.b&&cutFromLine(d.a,d.b)){ PLAN.drawCut=false; syncDrawBtn(); } }
     else if(d.part==='flip'&&!d.moved) cutEdit({flip:!clip.flip});
     SHEET.key=null; LAB.requestRender(); };
@@ -644,7 +670,7 @@ const MAT={tower:mkMat(0x9aa3ad),spandrel:mkMat(0x8f99a4),glass:mkMat(0x6e9cc4),
 function applyColors(){ const v=(k,d)=>cssVar(k)||d; MAT.tower.color.set(v('--mass','#9aa3ad')); MAT.spandrel.color.set(v('--spandrel','#8f99a4')); MAT.glass.color.set(v('--glass','#6e9cc4')); MAT.shade.color.set(v('--shade-dev','#d9a441')); MAT.pv.color.set(v('--pv','#1f3a5f')); MAT.green.color.set(v('--green','#5e8f5a')); }
 /* the part colours of the model check, so the imported model reads the same after import */
 const PART_MATS={};
-function partMat(cat){ if(PART_MATS[cat]) return PART_MATS[cat]; const C=(LAB.parts&&LAB.parts.CATS)||[]; const row=C.find(c=>c[0]===cat); const col=row?row[2]:'#A9B2BC';
+function partColorMat(cat){ if(PART_MATS[cat]) return PART_MATS[cat]; const C=(LAB.parts&&LAB.parts.CATS)||[]; const row=C.find(c=>c[0]===cat); const col=row?row[2]:'#A9B2BC';
   const m=new THREE.MeshLambertMaterial({color:new THREE.Color(col),side:THREE.DoubleSide}); if(cat==='window'){ m.transparent=true; m.opacity=0.6; m.depthWrite=false; } return PART_MATS[cat]=m; }
 function useRaw(){ return !!LAB.uploadRaw&&SW.show.raw&&LAB.S.typology==='upload'; }
 function meshArea(list){ let A=0; for(const m of list) for(let i=0;i<m.f.length;i+=3){ const a=m.f[i]*3,b=m.f[i+1]*3,c=m.f[i+2]*3; const ux=m.v[b]-m.v[a],uy=m.v[b+1]-m.v[a+1],uz=m.v[b+2]-m.v[a+2],vx=m.v[c]-m.v[a],vy=m.v[c+1]-m.v[a+1],vz=m.v[c+2]-m.v[a+2]; A+=0.5*Math.hypot(uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx); } return A; }
@@ -699,7 +725,7 @@ function buildAdv(){
       g.setAttribute('position',new THREE.BufferAttribute(pos,3)); g.setIndex(f); g=g.toNonIndexed(); g.computeVertexNormals(); const mesh=new THREE.Mesh(g,mat); mesh.userData.cat=cat; if(part) mesh.userData.part=part; mesh.castShadow=true; mesh.receiveShadow=true; advGroup.add(mesh); };
     if(byPart){ // each checked part in its preview colour; the studies still read it all as the tower
       const groups=new Map(); for(const p of MP.pieces){ let g=groups.get(p.v); if(!g){ g={}; groups.set(p.v,g); } (g[p.cat]||(g[p.cat]=[])).push(...p.f); }
-      for(const [v,g] of groups) for(const cat in g){ if(cat==='other') continue; toMesh(v,g[cat],partMat(cat),'tower',cat); } }
+      for(const [v,g] of groups) for(const cat in g){ if(cat==='other') continue; toMesh(v,g[cat],partColorMat(cat),'tower',cat); } }
     else for(const m of R.massing) toMesh(m.v,m.f,MAT.tower,'tower');
     for(const [list,cat] of [[R.shading,'shade'],[R.pv,'pv']]) for(const m of list) toMesh(m.v,m.f,MAT[cat],cat);
     advVersion=key;
