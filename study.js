@@ -1306,10 +1306,45 @@ let tMap=null;
 function zoneGlazing(fl,o){ const z=zoneFor(o,fl.i+1); if(!tMap){ tMap={}; if(sunResult&&sunResult.dayData){ try{ const A=solarStudy(sunResult); for(const Z of A.zones) tMap[Z.i]=Z.tAvg; }catch(e){} } } const idx=SW.zones.indexOf(z); const t=idx>=0&&tMap[idx]!=null?tMap[idx]:(STRATS[z.strat].mod||1); return {wwr:z.wwr,shgc:z.shgc,t,strat:z.strat}; }
 function energyChanged(){ persist(); rerender(); }
 function energySection(){ if(!LAB.energy||!LAB.floors) return ''; try{ return adv()?LAB.energy.energyHTML():LAB.energy.formHTML(); }catch(e){ console.error(e); return ''; } }
+/* ---------- program fit: how the façade and the plate serve each floor's program ----------
+   Indicative needs per program: daylit share of the floor (sDA proxy), annual sunlight exposure (ASE, too much or too little),
+   and fresh air (share of the floor within 8 m of an operable opening). Daylight and air read live from the façade zones and
+   the plate; ASE comes with the sun study. */
+const FIT={office:{dl:0.55,aseMax:0.10},studio:{dl:0.55,aseMax:0.05},hotel:{dl:0.40,aseMax:0.20,air:0.8},resi:{dl:0.40,aseMin:0.03,aseMax:0.30,air:0.8},retail:{dl:0.20,aseMax:0.15},public:{dl:0.40,aseMax:0.20},observation:{aseMax:0.35},amenity:{aseMin:0.15},boh:{},mep:{}};
+const FIT_COL={ok:'#4E9A5B',near:'#D9A441',bad:'#C2453B',wait:'#E3E5E8',na:'#F6F6F4'};
+const FIT_NAME={dl:'Daylight',sun:'Sun',air:'Fresh air'};
+function fitRows(){ const floors=LAB.floors||[]; const r=sunResult; const DL=(r&&r.daylight)||daylightTowerCached(); const ASE=r&&r.ase; const VT=ventTowerQuick();
+  const at=(rows,i)=>rows?rows.find(x=>x.i===i):null;
+  return floors.map(f=>{ const q=FIT[f.prog]||{}; const d=at(DL&&DL.rows,f.i), a=at(ASE&&ASE.rows,f.i), v=at(VT&&VT.rows,f.i); const c={};
+    c.dl=q.dl==null?{st:'na'}:(d?{v:d.pctLit,st:d.pctLit>=q.dl?'ok':(d.pctLit>=q.dl*0.8?'near':'bad'),need:'≥ '+Math.round(q.dl*100)+'%',lo:d.pctLit<q.dl}:{st:'wait'});
+    if(q.aseMax==null&&q.aseMin==null) c.sun={st:'na'}; else if(!a) c.sun={st:'wait'}; else { const hi=q.aseMax!=null&&a.pct>q.aseMax, lo=q.aseMin!=null&&a.pct<q.aseMin; const near=(hi&&a.pct<=q.aseMax*1.25)||(lo&&a.pct>=q.aseMin*0.75); c.sun={v:a.pct,st:!hi&&!lo?'ok':(near?'near':'bad'),hi,lo,need:[q.aseMin!=null?'≥ '+Math.round(q.aseMin*100)+'%':'',q.aseMax!=null?'≤ '+Math.round(q.aseMax*100)+'%':''].filter(Boolean).join(' and ')}; }
+    c.air=q.air==null?{st:'na'}:(v?{v:v.operable?v.within8:0,st:(v.operable?v.within8:0)>=q.air?'ok':((v.operable?v.within8:0)>=q.air*0.8?'near':'bad'),need:'≥ '+Math.round(q.air*100)+'% within 8 m',closed:!v.operable}:{st:'wait'});
+    return {f,c}; }); }
+function fitSVG(rows,cols){ const n=rows.length, rh=Math.max(4,Math.min(14,440/Math.max(1,n))), L=46, PW=14, W=380, cw=(W-L-PW-12)/cols.length, T=22, H=T+rh*n+6;
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Program fit by floor" data-key="program-fit"><style>text{font-family:var(--font-m);font-size:8.5px;fill:var(--muted)}</style>`;
+  cols.forEach((k,j)=>{ s+=`<text x="${(L+PW+8+cw*j+cw/2).toFixed(1)}" y="12" text-anchor="middle" style="fill:var(--ink);font-weight:600">${FIT_NAME[k]}</text>`; });
+  const lstep=Math.max(1,Math.ceil(10/rh));
+  rows.slice().reverse().forEach((R,k)=>{ const y=T+k*rh; const f=R.f; const P=LAB.PROG[f.prog]; if(k%lstep===0||k===n-1) s+=`<text x="${L-4}" y="${(y+rh/2+3).toFixed(1)}" text-anchor="end">L${f.i+1}</text>`;
+    s+=`<rect x="${L}" y="${y.toFixed(1)}" width="${PW}" height="${(rh-1).toFixed(1)}" fill="${(LAB.program&&LAB.program.color(f.prog))||'#9AA0A6'}"><title>L${f.i+1} · ${P?P.name:''}</title></rect>`;
+    cols.forEach((key,j)=>{ const c=R.c[key]; const x=L+PW+8+cw*j; const txt=c.v!=null?Math.round(c.v*100)+'%':''; s+=`<rect x="${(x+1).toFixed(1)}" y="${y.toFixed(1)}" width="${(cw-2).toFixed(1)}" height="${(rh-1).toFixed(1)}" rx="1.5" fill="${FIT_COL[c.st]}"${c.st==='na'?' stroke="#E6E6E2"':''}><title>L${f.i+1} ${P?P.short:''} · ${FIT_NAME[key]} ${c.st==='na'?'not needed for this program':(c.st==='wait'?'run the study':txt+' · needs '+c.need)}</title></rect>`; if(rh>=11&&txt) s+=`<text x="${(x+cw/2).toFixed(1)}" y="${(y+rh/2+3).toFixed(1)}" text-anchor="middle" style="fill:${c.st==='ok'||c.st==='bad'?'#fff':'#1F2227'}">${txt}</text>`; }); });
+  return s+'</svg>'; }
+/* problems grouped by runs of one program, each with the façade move that helps */
+function fitIssues(rows,cols){ const out=[]; const MOVE={dl:'raise the window-to-wall ratio or the glass VT on these levels, cut the device depth, or give this program a shallower plate',hi:'deepen the overhang or fins on the sunny faces of these levels, or lower the window-to-wall ratio',lo:'this program wants sun: lighten the shading on these levels, or move it higher or to the south',air:'make the façade zones on these levels operable, or keep the plate within 8 m of an opening'};
+  for(const key of cols){ let cur=null; const flush=()=>{ if(cur) out.push(cur); cur=null; };
+    for(const R of rows){ const c=R.c[key]; const bad=c.st==='bad'||c.st==='near'; const kind=key==='sun'?(c.hi?'hi':'lo'):(key==='air'?'air':'dl'); const id=R.f.prog+'|'+kind;
+      if(bad&&cur&&cur.id===id&&cur.to===R.f.i-1){ cur.to=R.f.i; cur.vals.push(c.v); continue; } flush(); if(bad) cur={id,key,kind,prog:R.f.prog,from:R.f.i,to:R.f.i,vals:[c.v],need:c.need,worst:c.st}; } flush(); }
+  return out.map(x=>{ const P=LAB.PROG[x.prog]; const avg=x.vals.reduce((a,b)=>a+(b||0),0)/x.vals.length; const rng=x.from===x.to?'L'+(x.from+1):`L${x.from+1}–L${x.to+1}`;
+    return `<li><i style="background:${(LAB.program&&LAB.program.color(x.prog))||'#9AA0A6'}"></i><b>${P?P.short:''} ${rng}</b><span class="fi-tag" style="background:${FIT_COL[x.worst]}">${FIT_NAME[x.key]} ${Math.round(avg*100)}%</span><span class="fi-need">needs ${x.need}</span><span class="fi-move">${MOVE[x.kind]}</span></li>`; }).join(''); }
+function programFitHTML(kind){ if(!adv()||!LAB.floors||!LAB.floors.length) return ''; const V=LAB.viz; const cols=kind==='light'?['dl','sun']:(kind==='air'?['air']:['dl','sun','air']);
+  const rows=fitRows(); const need=rows.filter(R=>cols.some(k=>R.c[k].st!=='na')); const ok=need.filter(R=>cols.every(k=>['ok','na','wait'].includes(R.c[k].st))&&cols.some(k=>R.c[k].st==='ok')).length; const bad=need.filter(R=>cols.some(k=>R.c[k].st==='bad')).length; const wait=need.filter(R=>cols.some(k=>R.c[k].st==='wait')).length;
+  const issues=fitIssues(rows,cols);
+  return `<h2>Program fit · ${kind==='light'?'light':kind==='air'?'fresh air':'all floors'}</h2><div class="kpi">${kp('Floors that suit their program',ok+' of '+need.length,wait?'so far, on what has been read':'',ok===need.length&&need.length?'ok':'')}${kp('Need a change',bad,bad?'red in the matrix':'none',bad?'over':'ok')}${wait?kp('Waiting for a run',wait,'floors without a sun study'):''}</div>`
+    +V.fig(fitSVG(rows,cols),'<span class="fit-key"><i style="background:'+FIT_COL.ok+'"></i>suits <i style="background:'+FIT_COL.near+'"></i>close <i style="background:'+FIT_COL.bad+'"></i>short <i style="background:'+FIT_COL.wait+'"></i>run the study <i style="background:'+FIT_COL.na+';outline:1px solid #E6E6E2"></i>not needed</span>')
+    +(issues?`<ul class="fit-issues">${issues}</ul>`:''); }
 /* the review panel shows only the study of the tab you are on; Model, Site, Design and Report show the whole review */
 function focusOf(){ return ({sun:'sun',daylight:'sun',wind:'wind',vent:'wind',rain:'rain',energy:'energy',eff:'energy'})[curTab]||null; }
-function setOut(kind,html){ if(kind) sections[kind]=html; const out=$('impact-out'); const pb=document.getElementById('plan-block'); tMap=null;
-  if(adv()){ out.hidden=false; const f=focusOf(); const withPlan=!f||f==='sun'||f==='wind'; const body=!f?sections.sun+sections.wind+sections.rain+energySection():(f==='energy'?energySection():sections[f]); out.innerHTML=reportHead()+(withPlan?'<div id="plan-slot"></div>':'')+body; const slot=document.getElementById('plan-slot'); if(slot&&pb) slot.appendChild(pb); else { const home=document.getElementById('plan-home'); if(pb&&home&&pb.parentNode!==home) home.appendChild(pb); } const home=document.getElementById('plan-home'); if(home) home.hidden=!withPlan; }
+function setOut(kind,html){ if(kind) sections[kind]=html; { const bn=document.getElementById('mode-banner'); if(bn) bn.hidden=adv()&&!!focusOf(); } const out=$('impact-out'); const pb=document.getElementById('plan-block'); tMap=null;
+  if(adv()){ out.hidden=false; const f=focusOf(); const withPlan=f==='sun'||f==='wind'; const body=!f?programFitHTML('all'):(f==='energy'?energySection():f==='sun'?sections.sun+programFitHTML('light'):f==='wind'?sections.wind+programFitHTML('air'):sections[f]); out.innerHTML=(!f?reportHead():'')+(withPlan?'<div id="plan-slot"></div>':'')+body; const slot=document.getElementById('plan-slot'); if(slot&&pb) slot.appendChild(pb); else { const home=document.getElementById('plan-home'); if(pb&&home&&pb.parentNode!==home) home.appendChild(pb); } const home=document.getElementById('plan-home'); if(home) home.hidden=!withPlan; }
   else { out.hidden=false; const S=LAB.S, floors=LAB.floors||[]; const name=S.typology==='upload'&&LAB.uploadRaw?LAB.uploadRaw.name:LAB.TYP[S.typology].name; const what=curTab==='eff'?'Massing efficiency':(kind==='sun'?'Sun and shadow':kind==='wind'?'Pedestrian wind':'Rain');
     const r=kind==='sun'?sunResult:(kind==='wind'?windResult:(LAB.rain&&LAB.rain.result)); const head=`<div class="report-head"><div class="rh-title"><h2 style="margin:0">Site impact · ${what}</h2><span class="rh-meta">${name} · ${S.height} m · ${floors.length} floors · ${curTab==='eff'?'live from the massing':(r?'run '+fmtTime(r.at):'not yet run')}${!curTab.match(/eff/)&&stale[kind]&&r?' · <span class="rh-stale">settings changed, run again</span>':''}</span></div></div>`;
     out.innerHTML=head+(curTab==='eff'?energySection():html); const home=document.getElementById('plan-home'); if(pb&&home&&pb.parentNode!==home) home.appendChild(pb); }
@@ -1592,7 +1627,7 @@ function aseFloor(f,coarse){
 let dlCache={key:null,rows:null}, aseTowerRes=null, aseBusy=false;
 function dlKey(){ const floors=LAB.floors; return JSON.stringify([SW.zones,SW.glaz.vt,SW.dl,floors.length,floors.map(f=>[f.w,f.d,f.h,f.area|0]),LAB.site&&LAB.site.meta&&LAB.site.meta.source,LAB.S.posX,LAB.S.posY,LAB.S.rotDeg,LAB.S.site.future]); }
 let dlTimer=null;
-function daylightTowerCached(){ if(!LAB.floors) return null; const key=dlKey(); if(dlCache.key===key) return dlCache.rows; clearTimeout(dlTimer); dlTimer=setTimeout(()=>{ try{ daylightTower(); if(LAB.S.impact.mode==='sun') renderSun(sunResult); }catch(e){ console.error(e); } },280); return null; }
+function daylightTowerCached(){ if(!LAB.floors) return null; const key=dlKey(); if(dlCache.key===key) return dlCache.rows; clearTimeout(dlTimer); dlTimer=setTimeout(()=>{ try{ daylightTower(); if(LAB.S.impact.mode==='sun') renderSun(sunResult); else if(adv()) setOut(null); }catch(e){ console.error(e); } },280); return null; }
 function daylightTower(){
   const floors=LAB.floors; if(!floors) return null; const key=dlKey();
   if(dlCache.key===key) return dlCache.rows;
