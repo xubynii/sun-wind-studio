@@ -38,7 +38,7 @@ function peopleFor(floors){ const r={jobs:0,residents:0,guests:0,visitors:0}; fo
 /* glazing on a floor face: from the façade zones when the studio provides them, else a typical curtain wall */
 function glazing(fl,o){ if(LAB.sim&&LAB.sim.zoneGlazing) return LAB.sim.zoneGlazing(fl,o); return {wwr:0.4,shgc:0.35,t:1,strat:'curtain'}; }
 
-function model(floors){
+function modelMonthly(floors){
   const S=LAB.S, E=S.energy, C=LAB.CLIMATE; const a={light:2,medium:3,heavy:4}[E.mass]||3;
   const effH=E.heat==='hp'?3.0:(E.heat==='gas'?0.92:1), effW=E.heat==='hp'?2.5:(E.heat==='gas'?0.85:1), gasHeat=E.heat==='gas';
   const util=(g)=>{ if(!isFinite(g)||g<=0) return 1; if(Math.abs(g-1)<1e-6) return a/(a+1); return (1-Math.pow(g,a))/(1-Math.pow(g,a+1)); };
@@ -79,6 +79,88 @@ function model(floors){
   last={rows,monthly,uses,gfa,total:totalK,teui:totalK/gfa,tedi:tediK/gfa,ghgi:(gasK*0.18+elecK*0.011)/gfa,gas:gasK,elec:elecK,tgt,envelope,glz,people:peopleFor(floors)};
   return last;
 }
+/* ---------- hourly model: ISO 13790 simple hourly method (5R1C), as in the open-source RC_BuildingSimulator (ETH Zurich) and the EnergyPlus-calibrated
+   practice behind it. One zone per program; every hour of the CWEC typical year; solar gains from the Perez all-weather sky on each face at its true
+   azimuth; ventilation, heat recovery and setbacks on the program's schedule; lighting dimmed by the climate-based daylight of each floor; heat-pump
+   and chiller efficiency follow the outdoor temperature (fixed fraction of Carnot). ---------- */
+const MASS={light:{am:2.5,cm:110000},medium:{am:2.5,cm:165000},heavy:{am:3.0,cm:260000}};
+const SFP=1.2; // W per L/s of outdoor air: balanced supply and extract with heat recovery
+function occupied(sch,k,C){ const doy=Math.floor(k/24), m=LAB.phys.prep().mon[k]; const dst=(C.tz[m]||-8)+8; const clock=(k%24+dst)%24; const dow=doy%7; if(sch.d===5&&dow>=5) return false; return clock>=sch.a&&clock<sch.b; }
+function schedOf(p){ const h=OPS[p].hrs; return h>=168?{d:7,a:0,b:24}:h>=98?{d:7,a:8,b:22}:h>=84?{d:7,a:8,b:20}:h>=70?{d:5,a:7,b:21}:{d:5,a:7,b:19}; }
+const DAYLIT_PROG=p=>OPS[p].hrs<168;
+/* diurnal profiles for programs lived in around the clock (shape of the NECB / ASHRAE 90.1 residential schedules): share of people, lighting and equipment by clock hour */
+const H24=(...runs)=>{ const a=[]; for(const [n,v] of runs) for(let i=0;i<n;i++) a.push(v); return a; };
+const PROF={people:H24([7,0.9],[2,0.5],[8,0.25],[5,0.7],[2,0.9]),light:H24([6,0.05],[2,0.3],[9,0.1],[6,0.5],[1,0.2]),equip:H24([6,0.3],[3,0.6],[8,0.4],[6,0.8],[1,0.5])}; // housing and hotels light mostly after dark: no daylight-linked dimming credited
+function modelHourly(floors){
+  const S=LAB.S, E=S.energy, C=LAB.CLIMATE, P=LAB.phys.prep(); const n=8760; const ms=MASS[E.mass]||MASS.medium;
+  const gasHeat=E.heat==='gas'; const etaH=3.0/(308.15/28), etaC=E.cop/(280.15/38);
+  const copH=T=>E.heat==='hp'?Math.max(1.5,Math.min(5,etaH*308.15/Math.max(5,35-T))):(gasHeat?0.92:1);
+  const copC=T=>Math.max(E.cop*0.6,Math.min(E.cop*1.6,etaC*280.15/Math.max(5,T+3)));
+  const effW=E.heat==='hp'?2.5:(E.heat==='gas'?0.85:1);
+  const DL=LAB.sim&&LAB.sim.daylightTowerCached?LAB.sim.daylightTowerCached():null;
+  const zones={}; const glz={}; for(const o of ORI) glz[o]={A:0,wwr:0,shgcT:0};
+  floors.forEach((fl,i)=>{ const z=zones[fl.prog]||(zones[fl.prog]={p:fl.prog,area:0,vol:0,Agl:{N:0,E:0,S:0,W:0},Aop:{N:0,E:0,S:0,W:0},Gaz:{},roof:0,soffit:0,floors:0,open:false,dsf:new Array(12).fill(0),dsfA:0});
+    z.area+=fl.area; z.vol+=fl.area*(fl.h-0.4); z.floors++; z.roof+=fl.terrace+fl.roof; z.soffit+=i>0?floors[i-1].coveredVoid:0;
+    const off=LAB.phys.faceOffset(fl.rot||0);
+    for(const o of ORI){ const A=(fl.facade?fl.facade[o]:0)*fl.h; const g=glazing(fl,o); z.Agl[o]+=A*g.wwr; z.Aop[o]+=A*(1-g.wwr); const az=Math.round(({N:0,E:90,S:180,W:270}[o]+off+360)%360); z.Gaz[az]=(z.Gaz[az]||0)+A*g.wwr*g.shgc*g.t; glz[o].A+=A; glz[o].wwr+=A*g.wwr; glz[o].shgcT+=A*g.wwr*g.shgc*g.t; }
+    const dr=DL&&DL.rows&&DL.rows[i]; if(dr&&dr.dsf){ for(let m=0;m<12;m++) z.dsf[m]+=dr.dsf[m]*fl.area; z.dsfA+=fl.area; }
+    if(fl.garden||OPS[fl.prog].open) z.open=true; });
+  for(const o of ORI){ glz[o].wwrAvg=glz[o].A?glz[o].wwr/glz[o].A:0; glz[o].shgcEff=glz[o].wwr?glz[o].shgcT/glz[o].wwr:0; }
+  const monthly={heat:new Array(12).fill(0),cool:new Array(12).fill(0),light:new Array(12).fill(0),equip:new Array(12).fill(0),dhw:new Array(12).fill(0),aux:new Array(12).fill(0)};
+  const hH=new Float32Array(n), hC=new Float32Array(n); const rows=[]; let gasK=0, elecK=0, tediK=0, totalK=0, saveK=0; const envelope={gl:0,op:0,roof:0}; const shade=E.shade||0.85;
+  for(const p in zones){ const z=zones[p], ops=OPS[p], sch=schedOf(p), cond=!z.open; const Af=z.area;
+    if(z.dsfA) for(let m=0;m<12;m++) z.dsf[m]/=z.dsfA;
+    const Hw=ORI.reduce((s,o)=>s+z.Agl[o]*E.glazU,0), Hop=ORI.reduce((s,o)=>s+z.Aop[o]*E.wallU,0)+(z.roof+z.soffit)*E.roofU;
+    const At=4.5*Af, Am=ms.am*Af, Cm=ms.cm*Af, His=3.45*At, Hms=9.1*Am, Hem=Hop<Hms*0.99?1/(1/Hop-1/Hms):Hop*50;
+    envelope.gl+=Object.values(z.Agl).reduce((s,v)=>s+v,0); envelope.op+=Object.values(z.Aop).reduce((s,v)=>s+v,0); envelope.roof+=z.roof+z.soffit;
+    const faces=Object.entries(z.Gaz).filter(([,g])=>g>0).map(([az,g])=>{ const F=LAB.phys.face(+az); return {g:g*0.9*shade,F}; });
+    const r={p,area:Af,floors:z.floors,heat:0,cool:0,light:0,equip:0,dhw:0,aux:0,tedi:0,solar:0,internal:0,Htr:Hw+Hop,Hve:0,cond,peakH:0,peakC:0,tMax:-99,over26:0,lightSave:0};
+    let Tm=20; const lightOn=E.lpd*ops.lightF*0.75*Af, dimOK=DAYLIT_PROG(p);
+    for(let k=0;k<n;k++){ const m=P.mon[k], Te=P.T[k]; const occ=occupied(sch,k,C);
+      let sol=0; for(const q of faces) sol+=q.g*(q.F.sky[k]+q.F.gnd[k]+q.F.beam[k]);
+      const dst=(C.tz[m]||-8)+8, clock=(k%24+dst)%24, dayHour=clock>=8&&clock<18;
+      const dim=occ&&dimOK&&dayHour?Math.min(0.9,(z.dsf[m]||0)*0.9):0; const allDay=p==='resi'||p==='hotel';
+      const lightW=allDay?E.lpd*ops.lightF*Af*PROF.light[clock]:(occ?lightOn*(1-dim):0); const equipW=E.equip*ops.eqF*Af*(allDay?PROF.equip[clock]:(occ?1:0.2));
+      const peopleW=allDay?Af/ops.occ*75*PROF.people[clock]:(occ?Af/ops.occ*75:0); const phiInt=peopleW+lightW+equipW;
+      const Hve=1200*((occ?E.vent/1000*Af*(1-E.hr):0)+E.infil*z.vol/3600);
+      const H1=1/(1/Hve+1/His), H2=H1+Hw, H3=1/(1/H2+1/Hms);
+      const phiM0=Am/At*(0.5*phiInt+sol), phiSt0=(1-Am/At-Hw/(9.1*At))*(0.5*phiInt+sol);
+      const solve=phiHC=>{ const phiIa=0.5*phiInt+phiHC; const mtot=phiM0+Hem*Te+H3*(phiSt0+Hw*Te+H1*(phiIa/Hve+Te))/H2;
+        const TmN=(Tm*(Cm/3600-0.5*(H3+Hem))+mtot)/(Cm/3600+0.5*(H3+Hem)); const Tmm=(TmN+Tm)/2;
+        const Ts=(Hms*Tmm+phiSt0+Hw*Te+H1*(Te+phiIa/Hve))/(Hms+Hw+H1); const Ta=(His*Ts+Hve*Te+phiIa)/(His+Hve); return {Ta,TmN}; };
+      let res=solve(0), phi=0;
+      if(cond){ const sH=occ?E.setH:E.setH-4, sC=occ?E.setC:E.setC+4;
+        if(res.Ta<sH||res.Ta>sC){ const tgt=res.Ta<sH?sH:sC; const r10=solve(10*Af); phi=10*Af*(tgt-res.Ta)/(r10.Ta-res.Ta); res=solve(phi); } }
+      Tm=res.TmN; if(!cond){ if(res.Ta>r.tMax) r.tMax=res.Ta; if(occ&&res.Ta>26) r.over26++; }
+      const qh=phi>0?phi/1000:0, qc=phi<0?-phi/1000:0; hH[k]+=qh; hC[k]+=qc; if(phi>r.peakH) r.peakH=phi; if(-phi>r.peakC) r.peakC=-phi;
+      const heat=qh/copH(Te), cool=qc/copC(Te); const light=lightW/1000, equip=equipW/1000; const aux=(occ?SFP*E.vent*Af/1000:0)+0.02*(qh+qc)+4*Af/8760;
+      monthly.heat[m]+=heat; monthly.cool[m]+=cool; monthly.light[m]+=light; monthly.equip[m]+=equip; monthly.aux[m]+=aux;
+      r.heat+=heat; r.cool+=cool; r.light+=light; r.equip+=equip; r.aux+=aux; r.tedi+=qh; r.solar+=sol/1000; r.internal+=phiInt/1000; r.Hve+=Hve/n; r.lightSave+=occ?lightOn*dim/1000:0; }
+    for(let m=0;m<12;m++){ const dhw=ops.dhw*Af/effW*C.days[m]/365; monthly.dhw[m]+=dhw; r.dhw+=dhw; }
+    r.total=r.heat+r.cool+r.light+r.equip+r.dhw+r.aux; r.teui=r.total/Af; r.tediI=r.tedi/Af; r.peakHw=r.peakH/Af; r.peakCw=r.peakC/Af;
+    const gas=gasHeat?r.heat+r.dhw:0, elec=r.total-gas; r.ghgi=(gas*0.18+elec*0.011)/Af;
+    gasK+=gas; elecK+=elec; tediK+=r.tedi; totalK+=r.total; saveK+=r.lightSave; rows.push(r); }
+  rows.sort((x,y)=>y.total-x.total);
+  const gfa=floors.reduce((s,f)=>s+f.area,0);
+  const tgt={teui:0,tedi:0,ghgi:0}; for(const r of rows){ const t=TARGETS[r.p]||TARGETS.office; tgt.teui+=t.teui*r.area; tgt.tedi+=t.tedi*r.area; tgt.ghgi+=t.ghgi*r.area; } tgt.teui/=gfa; tgt.tedi/=gfa; tgt.ghgi/=gfa;
+  const uses={}; for(const [k] of USES) uses[k]=monthly[k].reduce((s,v)=>s+v,0);
+  let pkH=0, pkC=0; for(let k=0;k<n;k++){ if(hH[k]>pkH) pkH=hH[k]; if(hC[k]>pkC) pkC=hC[k]; }
+  last={rows,monthly,uses,gfa,total:totalK,teui:totalK/gfa,tedi:tediK/gfa,ghgi:(gasK*0.18+elecK*0.011)/gfa,gas:gasK,elec:elecK,tgt,envelope,glz,people:peopleFor(floors),
+    method:'hourly',hourly:{heat:hH,cool:hC},peakH:pkH*1000/gfa,peakC:pkC*1000/gfa,lightSave:saveK,lightShare:saveK/Math.max(1,uses.light+saveK),daylit:!!DL};
+  return last;
+}
+function model(floors){ return LAB.phys&&LAB.phys.prep()?modelHourly(floors):modelMonthly(floors); }
+/* hourly heating and cooling demand by week and hour of day, W/m² (the carpet plot of Ladybug and the EnergyPlus results viewer) */
+function loadCarpet(r){ if(!r.hourly) return ''; const W=380,H=150,L=30,R=34,T=10,B=22; const nw=52, cw=(W-L-R)/nw, chh=(H-T-B)/24; const gfa=r.gfa; let mx=0; const g=[];
+  for(let w=0;w<nw;w++) for(let h=0;h<24;h++){ let s=0,c=0; for(let d=0;d<7;d++){ const k=(w*7+d)*24+h; if(k>=8760) continue; s+=(r.hourly.heat[k]-r.hourly.cool[k]); c++; } const v=c?s/c*1000/gfa:0; g.push(v); mx=Math.max(mx,Math.abs(v)); }
+  mx=Math.max(1,mx); const col=v=>{ const t=Math.min(1,Math.abs(v)/mx); if(t<0.03) return 'var(--panel2)'; return v>0?`rgba(196,72,52,${(0.15+0.85*t).toFixed(2)})`:`rgba(52,110,190,${(0.15+0.85*t).toFixed(2)})`; };
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Hourly heating and cooling demand by week and hour" data-key="energy-carpet"><style>text{font-family:var(--font-m);font-size:8.5px;fill:var(--muted)}</style>`;
+  for(let w=0;w<nw;w++) for(let h=0;h<24;h++){ const v=g[w*24+h]; s+=`<rect x="${(L+w*cw).toFixed(2)}" y="${(T+h*chh).toFixed(2)}" width="${(cw+0.05).toFixed(2)}" height="${(chh+0.05).toFixed(2)}" fill="${col(v)}"/>`; }
+  for(const h of [0,6,12,18,24]) s+=`<text x="${L-4}" y="${(T+h*chh+3).toFixed(1)}" text-anchor="end">${h}h</text>`;
+  LAB.CLIMATE.months.forEach((mn,i)=>{ const d=LAB.CLIMATE.days.slice(0,i).reduce((a,b)=>a+b,0); s+=`<text x="${(L+d/7*cw).toFixed(1)}" y="${H-8}">${mn[0]}</text>`; });
+  const x0=W-R+8; for(let i=0;i<20;i++){ const v=mx*(1-i/9.5); s+=`<rect x="${x0}" y="${(T+i*(H-T-B)/20).toFixed(1)}" width="8" height="${((H-T-B)/20+0.2).toFixed(1)}" fill="${col(v)}"/>`; }
+  s+=`<text x="${x0-2}" y="${T-2}">${mx.toFixed(0)}</text><text x="${x0-2}" y="${H-B+9}">-${mx.toFixed(0)}</text>`;
+  return s+'</svg>'; }
 function chartSVG(r,forPdf){
   const W=380,H=222,L=44,R=8,T=14,B=46; const pw=W-L-R, ph=H-T-B; const C=LAB.CLIMATE;
   const tot=r.monthly.heat.map((_,m)=>USES.reduce((s,[k])=>s+r.monthly[k][m],0)); const max=Math.max(1,...tot)/1000;
@@ -107,22 +189,24 @@ function energyHTML(){
   const floors=LAB.floors; if(!floors) return ''; const r=model(floors); const E=LAB.S.energy; const names={N:'North',E:'East',S:'South',W:'West'}; const V=LAB.viz;
   return `<h2>Energy · typical year</h2><div class="kpi">${kpi('TEUI',r.teui,'kWh/m²/yr',r.tgt.teui)}${kpi('TEDI',r.tedi,'kWh/m²/yr heating demand',r.tgt.tedi)}${kpi('GHGI',r.ghgi,'kgCO₂e/m²/yr',r.tgt.ghgi)}</div>
   ${V.fig(targetBars(r),'Indicative City of Vancouver rezoning targets weighted by program.')}
-  ${V.fig(chartSVG(r,false),'Monthly energy by end use: heating peaks in winter, cooling and fans in summer; lighting and plug loads are flat.')}
+  ${r.method==='hourly'?`<div class="kpi">${kp('Peak heating',r.peakH.toFixed(0)+' W/m²','design hour of the typical year')}${kp('Peak cooling',r.peakC.toFixed(0)+' W/m²','design hour of the typical year')}${kp('Lighting saved by daylight',Math.round(r.lightShare*100)+'%',r.daylit?fmtI(r.lightSave/1000)+' MWh/yr · dimming on daytime programs':'waiting for the daylight run',r.lightShare>0.2?'ok':'')}</div>`:''}
+  ${V.fig(chartSVG(r,false),'Monthly energy by end use: heating peaks in winter, cooling and fans in summer; lighting dips in the bright months where daylight dims it.')}
+  ${r.method==='hourly'?V.fig(loadCarpet(r),'Heating (red) and cooling (blue) demand, W/m² of floor, by week across the year and hour of the day: night-time heating, sun-driven afternoon cooling, the setback after hours.'):''}
   ${V.row(V.fig(useDonut(r),`${fmtI(r.elec/1000)} MWh electricity, ${fmtI(r.gas/1000)} MWh gas · ${fmtI(r.total/Math.max(1,r.people.total))} kWh per person · ${PLANT[E.heat]}`),V.fig(V.hbars(ORI.map(o=>({label:names[o],v:r.glz[o].wwrAvg,color:'var(--glass)',text:Math.round(r.glz[o].wwrAvg*100)+'% · SHGC '+r.glz[o].shgcEff.toFixed(2)+' · '+fmtI(r.glz[o].A)+' m²'})),{key:'glazing-face',title:'Glazing by face · window-to-wall from the zones',max:1,labelW:46}),'Effective SHGC is after the zone\'s shading devices.'))}
   ${V.fig(V.hbars(r.rows.map(z=>({label:LAB.PROG[z.p].name+(z.cond?'':' (uncond.)'),v:z.teui,mark:(TARGETS[z.p]||TARGETS.office).teui,color:z.teui<=(TARGETS[z.p]||TARGETS.office).teui?'var(--ok)':'var(--bad)',text:z.teui.toFixed(0)+' · target '+(TARGETS[z.p]||TARGETS.office).teui+' · TEDI '+z.tediI.toFixed(1)+' · '+fmtI(z.area)+' m²'})),{key:'program-teui',title:'TEUI by program, kWh/m²/yr · tick = target',dec:0,labelW:110}),'Programs are derived from the massing; sky gardens and plant floors are unconditioned.')}
   <details style="margin-top:10px"><summary>Monthly table</summary><div class="tbl-wrap"><table><thead><tr><th>MWh</th>${LAB.CLIMATE.months.map(m=>`<th class="num">${m}</th>`).join('')}</tr></thead><tbody>${USES.map(([k,n])=>`<tr><td>${n}</td>${r.monthly[k].map(v=>`<td class="num">${(v/1000).toFixed(0)}</td>`).join('')}</tr>`).join('')}</tbody></table></div></details>
-  <p class="note">Monthly balance per program zone in the manner of ISO 13790: transmission through glazing, opaque wall, roofs, terraces and soffits from the carved floor masks by orientation; ventilation with heat recovery and infiltration; internal gains from people, lighting and equipment on program schedules; solar gains from monthly irradiation at 49° N on each face, through the window-to-wall ratio, SHGC and device transmission of the façade zone covering that face and level, with ${Math.round((E.shade||0.85)*100)}% of the sun reaching the façade past the neighbours. Gains offset losses through an ISO 13790 utilisation factor set by thermal mass. TEUI counts all end uses; TEDI is space-heating demand before the plant; GHGI uses 0.18 kg/kWh for gas and 0.011 kg/kWh for BC electricity. The end-use, glazing and program tables are in the report.</p>`;
+  <p class="note">${r.method==='hourly'?`Hourly simulation, one zone per program, for all 8,760 hours of the CWEC typical year: the ISO 13790 five-resistance, one-capacitance model used by the open-source RC_BuildingSimulator, with air, surface and mass nodes (${E.mass} construction). Transmission through glazing, opaque wall, roofs, terraces and soffits comes from the carved floor masks by orientation; ventilation with ${Math.round(E.hr*100)}% heat recovery runs on the program schedule, with infiltration always; set points ${E.setH} / ${E.setC} °C, set back 4 K after hours. Solar gains use the Perez all-weather sky on each face at its true azimuth (as EnergyPlus and Radiance do), through the window-to-wall ratio, SHGC and device transmission of the zone on that face and level, with ${Math.round((E.shade||0.85)*100)}% of the sun reaching the façade past the neighbours. Lighting on daytime programs dims with each floor's climate-based daylight. The heat pump and chiller follow the outdoor temperature at a fixed share of the Carnot efficiency (heating COP 3.0 at 7 °C). TEUI counts all end uses; TEDI is space-heating demand before the plant; GHGI uses 0.18 kg/kWh for gas and 0.011 kg/kWh for BC electricity.`:`Monthly balance per program zone in the manner of ISO 13790 (the hourly weather is not loaded): transmission, ventilation with heat recovery and infiltration, internal and solar gains offset through an ISO 13790 utilisation factor set by thermal mass.`} Interior zoning, real HVAC controls and thermal bridges need a full EnergyPlus or OpenStudio model for compliance. The end-use, glazing and program tables are in the report.</p>`;
 }
 function energyReport(){
   const r=last||model(LAB.floors); const E=LAB.S.energy; const names={N:'North',E:'East',S:'South',W:'West'};
   return {title:'Energy model · typical year',chart:chartSVG(r,true),charts:[{svg:LAB.viz.pdf(useDonut(r)),title:'End uses'},{svg:LAB.viz.pdf(targetBars(r)),title:'Against the targets'}],
-    settings:[['Glazing U / wall U / roof U',E.glazU.toFixed(1)+' / '+E.wallU.toFixed(2)+' / '+E.roofU.toFixed(2)+' W/m²K'],['Window-to-wall by face N / E / S / W',ORI.map(o=>Math.round(r.glz[o].wwrAvg*100)+'%').join(' / ')+' (from the façade zones)'],['Effective SHGC after devices N / E / S / W',ORI.map(o=>r.glz[o].shgcEff.toFixed(2)).join(' / ')],['Infiltration / outdoor air',E.infil.toFixed(2)+' ach / '+E.vent.toFixed(2)+' L/s per m² with '+Math.round(E.hr*100)+'% heat recovery'],['Plant',PLANT[E.heat]+' (COP 3.0 heating, 2.5 hot water for the heat pump; 92% / 85% gas), cooling COP '+E.cop.toFixed(2)],['Set points',E.setH.toFixed(1)+' / '+E.setC.toFixed(1)+' °C'],['Lighting / plug loads',E.lpd.toFixed(1)+' / '+E.equip.toFixed(1)+' W/m²'],['Context shading',Math.round((E.shade||0.85)*100)+'% of solar reaches the façade'],['Thermal mass',E.mass]],
+    settings:[['Glazing U / wall U / roof U',E.glazU.toFixed(1)+' / '+E.wallU.toFixed(2)+' / '+E.roofU.toFixed(2)+' W/m²K'],['Window-to-wall by face N / E / S / W',ORI.map(o=>Math.round(r.glz[o].wwrAvg*100)+'%').join(' / ')+' (from the façade zones)'],['Effective SHGC after devices N / E / S / W',ORI.map(o=>r.glz[o].shgcEff.toFixed(2)).join(' / ')],['Infiltration / outdoor air',E.infil.toFixed(2)+' ach / '+E.vent.toFixed(2)+' L/s per m² with '+Math.round(E.hr*100)+'% heat recovery'],['Plant',PLANT[E.heat]+' (heat pump COP 3.0 at 7 °C following the outdoor temperature, 2.5 hot water; 92% / 85% gas), cooling COP '+E.cop.toFixed(2)+' at 35 °C, also following the outdoor temperature'],['Set points',E.setH.toFixed(1)+' / '+E.setC.toFixed(1)+' °C'],['Lighting / plug loads',E.lpd.toFixed(1)+' / '+E.equip.toFixed(1)+' W/m²'],['Context shading',Math.round((E.shade||0.85)*100)+'% of solar reaches the façade'],['Thermal mass',E.mass]],
     stats:[['TEUI',r.teui.toFixed(1)+' kWh/m²/yr (target '+r.tgt.teui.toFixed(0)+')'],['TEDI',r.tedi.toFixed(1)+' kWh/m²/yr (target '+r.tgt.tedi.toFixed(0)+')'],['GHGI',r.ghgi.toFixed(2)+' kgCO2e/m²/yr (target '+r.tgt.ghgi.toFixed(1)+')'],['Annual energy',fmtI(r.total/1000)+' MWh'],['Electricity / gas',fmtI(r.elec/1000)+' / '+fmtI(r.gas/1000)+' MWh'],['Per person',fmtI(r.total/Math.max(1,r.people.total))+' kWh/yr'],['Glazing / opaque wall area',fmtI(r.envelope.gl)+' / '+fmtI(r.envelope.op)+' m²'],['Roofs, terraces and soffits',fmtI(r.envelope.roof)+' m²']],
     tables:[{key:'end-uses',title:'End uses',head:['End use','MWh/yr','kWh/m²','Share'],rows:USES.map(([k,n])=>[n,fmtI(r.uses[k]/1000),(r.uses[k]/r.gfa).toFixed(1),(r.uses[k]/r.total*100).toFixed(0)+'%'])},
       {title:'Glazing by face',head:['Face','Façade m²','Window-to-wall','Effective SHGC'],rows:ORI.map(o=>[names[o],fmtI(r.glz[o].A),Math.round(r.glz[o].wwrAvg*100)+'%',r.glz[o].shgcEff.toFixed(2)])},
       {title:'By program',head:['Program','m²','TEUI','TEDI','Target TEUI','Solar gain MWh','Internal gain MWh'],rows:r.rows.map(z=>[LAB.PROG[z.p].name+(z.cond?'':' (unconditioned)'),fmtI(z.area),z.teui.toFixed(0),z.tediI.toFixed(1),String((TARGETS[z.p]||TARGETS.office).teui),fmtI(z.solar/1000),fmtI(z.internal/1000)])},
       {title:'Monthly energy, MWh',head:['End use'].concat(LAB.CLIMATE.months),rows:USES.map(([k,n])=>[n].concat(r.monthly[k].map(v=>(v/1000).toFixed(0))))}],
-    notes:['Method: monthly quasi-steady-state balance per program zone in the manner of ISO 13790. Losses = (transmission + ventilation) × (set point − outdoor temperature) × hours; gains = internal (people 75 W, lighting at 75% of installed power, equipment on program schedules) + solar (glazing area × SHGC × device transmission × 0.9 frame factor × context shading × monthly irradiation by orientation for 49° N). Heating demand = losses − utilisation × gains; cooling demand = gains − utilisation × losses at the cooling set point. Utilisation follows the ISO 13790 gain/loss ratio with a mass parameter a of 2, 3 or 4.','Façade areas by orientation come from the exposed edges of each floor\'s 1 m solid/void mask, so voids, terraces and rotated plates change the envelope; window-to-wall ratio, SHGC and device transmission come from the façade zone covering each face and level. Roofs are the exposed tops of floors; soffits are voids under a floor above.','TEUI is total energy per m² of indoor area; TEDI is space-heating demand before plant efficiency; GHGI uses 0.18 kgCO2e/kWh for natural gas and 0.011 kgCO2e/kWh for BC electricity. Targets are indicative City of Vancouver rezoning values (housing 100 / 15 / 3, office 100 / 20 / 3, hotel 130 / 30 / 4) weighted by program area; confirm current by-law values before relying on them.','Climate: Vancouver Airport monthly normals, global horizontal irradiation 0.7 to 6.2 kWh/m²/day. Programs are derived from the massing by plate size and height. Not a substitute for an EnergyPlus or ClimateStudio model at design development.']};
+    notes:[(r.method==='hourly'?'Method: hourly ISO 13790 5R1C simulation per program zone for the 8,760 hours of the CWEC typical year (as in the open-source RC_BuildingSimulator), with Perez all-weather solar gains on each face, schedules and setbacks, heat recovery, daylight-linked dimming from the climate-based daylight run, and heat-pump and chiller efficiency following the outdoor temperature. Peak heating '+r.peakH.toFixed(0)+' W/m², peak cooling '+r.peakC.toFixed(0)+' W/m²; daylight dims '+Math.round(r.lightShare*100)+'% of the lighting. ':'')+'Fallback method: monthly quasi-steady-state balance per program zone in the manner of ISO 13790. Losses = (transmission + ventilation) × (set point − outdoor temperature) × hours; gains = internal (people 75 W, lighting at 75% of installed power, equipment on program schedules) + solar (glazing area × SHGC × device transmission × 0.9 frame factor × context shading × monthly irradiation by orientation for 49° N). Heating demand = losses − utilisation × gains; cooling demand = gains − utilisation × losses at the cooling set point. Utilisation follows the ISO 13790 gain/loss ratio with a mass parameter a of 2, 3 or 4.','Façade areas by orientation come from the exposed edges of each floor\'s 1 m solid/void mask, so voids, terraces and rotated plates change the envelope; window-to-wall ratio, SHGC and device transmission come from the façade zone covering each face and level. Roofs are the exposed tops of floors; soffits are voids under a floor above.','TEUI is total energy per m² of indoor area; TEDI is space-heating demand before plant efficiency; GHGI uses 0.18 kgCO2e/kWh for natural gas and 0.011 kgCO2e/kWh for BC electricity. Targets are indicative City of Vancouver rezoning values (housing 100 / 15 / 3, office 100 / 20 / 3, hotel 130 / 30 / 4) weighted by program area; confirm current by-law values before relying on them.','Climate: Vancouver Airport monthly normals, global horizontal irradiation 0.7 to 6.2 kWh/m²/day. Programs are derived from the massing by plate size and height. Not a substitute for an EnergyPlus or ClimateStudio model at design development.']};
 }
 /* ---------- massing efficiency: form-only metrics, no envelope or systems inputs ---------- */
 const RATE_COL=['#1F7A4D','#7fb800','#fab219','#ec835a','#B3362B'], RATE_L=['A','B','C','D','E'];
@@ -188,6 +272,6 @@ LAB.energy={
     LAB.controlsFor($('energy-env'),ENV_P,'en',()=>LAB.S.energy,()=>{ LAB.syncFor($('energy-env'),ENV_P,'en',LAB.S.energy); if(LAB.sim&&LAB.sim.energyChanged) LAB.sim.energyChanged(); });
     LAB.controlsFor($('energy-sys'),SYS_P,'en',()=>LAB.S.energy,()=>{ LAB.syncFor($('energy-sys'),SYS_P,'en',LAB.S.energy); if(LAB.sim&&LAB.sim.energyChanged) LAB.sim.energyChanged(); });
     LAB.syncFor($('energy-env'),ENV_P,'en',LAB.S.energy); LAB.syncFor($('energy-sys'),SYS_P,'en',LAB.S.energy); },
-  formStudy, formHTML, formReportData:formReport, energyHTML, model, reportData:energyReport, TARGETS, USES, chartSVG, get last(){return last;},
+  formStudy, formHTML, formReportData:formReport, energyHTML, model, modelMonthly, reportData:energyReport, TARGETS, USES, chartSVG, get last(){return last;},
 };
 })();
