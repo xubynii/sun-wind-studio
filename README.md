@@ -78,6 +78,14 @@ Settings persist in the browser's local storage per device.
   - **Core.** The core has a lift bank with lobby openings and two stairs with treads, break line, UP arrow and door swings.
   - **Annotation.** Each plan has a structural grid with numbered and lettered bubbles, chained and overall dimensions, and a room tag with the gross area. It also shows the A-A section line with its arrows, the property line on the levels above ground, a north arrow and a scale bar. Basements sit in hatched earth.
   - **Uploaded models.** The checked structure, core, stairs, façade and windows are cut from the model itself at the plan height. Parts that are not modeled are drawn from the floor plate, the façade zones and the core size. The columns follow an indicative grid of about 9 m.
+- **Section conventions.** The section uses the plan's line conventions:
+  - The building beyond the cut is a thin-lined elevation. Cut rooms are white.
+  - Cut columns are poche, and the nearest columns beyond are thin outlines.
+  - The core is a room with walls. Its lift shaft runs through the slabs with the car marked, and its stair is drawn at true proportion (0.28 m tread, 0.18 m riser) with a landing and the return flight dashed.
+  - Façade devices are cut where they cross the plane: overhangs, light shelves, balcony slabs with railings, louvre slats and double-skin glass. Fins show beyond.
+  - Annotation covers grid lines with bubbles and spacing dimensions over the roof, chained storey heights and the overall height on the left, room tags, level datums and a scale bar.
+- **Editing the cut.** On a floor plan, drag the A-A line to move it and drag an orange dot to turn it. Click an A bubble to flip it and double-click it to open the section. Draw a section cut sketches a new line across the plan. In the section's key plan, dragging across an empty spot draws a new cut.
+- **Modeled cores.** A core modeled as one solid is read as a room: walls with the lift and stair layout inside. A core modeled as walls is drawn as modeled.
 - **Clip.** A clipping plane like Rhino's. It can be vertical, for sections, or horizontal, for plan cuts at any height including below grade. Set its turn and position in the panel, or drag the orange handle in 3D. Flip side keeps the other half, and Look at the section opens the orthographic view of the cut.
 - **Cut display.** While the plane is on, the ground becomes a block of earth and cut solids show a flat fill: dark for the building, tan for the earth, brown for basements. Section always frames the basements.
 - **Import.** Choosing a model file goes straight to the model check: layers take their guessed roles. Change layer roles reopens the role table and Re-import applies it. Only a file with no massing layer stops at the table.
