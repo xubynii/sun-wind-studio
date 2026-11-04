@@ -283,18 +283,18 @@ h2 .help{order:0}
 .viewport.floor-hover canvas{cursor:pointer}
 /* tab colours: one per tool; the icon carries it, the selected tab is tinted with it */
 .rail button{--tc:var(--muted)}
-.rail button[data-tab="model"]{--tc:#475467}.rail button[data-tab="site"]{--tc:#3E8E5E}.rail button[data-tab="program"]{--tc:#7A5FC0}
 .rail button[data-tab="sun"]{--tc:#D99404}.rail button[data-tab="wind"]{--tc:#1E9E8E}.rail button[data-tab="rain"]{--tc:#3B7DD8}.rail button[data-tab="eff"]{--tc:#B0568F}
-.rail button[data-tab="strat"]{--tc:#D0643F}.rail button[data-tab="daylight"]{--tc:#C29A00}.rail button[data-tab="vent"]{--tc:#2A9FC4}.rail button[data-tab="energy"]{--tc:#DD4B39}.rail button[data-tab="report"]{--tc:#5F646B}
+.rail button[data-tab="daylight"]{--tc:#C29A00}.rail button[data-tab="vent"]{--tc:#2A9FC4}.rail button[data-tab="energy"]{--tc:#DD4B39}
 /* inverted tiles: each tab is filled with its colour, with white lines and label; the open tab is deeper and ringed */
 .rail{gap:6px}
-.rail button{background:color-mix(in srgb,var(--tc) 82%,white);color:#fff;border-radius:10px;transition:background .15s,box-shadow .15s,transform .15s}
-.rail button svg{stroke:#fff}
-.rail button:hover{background:var(--tc);color:#fff}.rail button:hover svg{stroke:#fff}
-.rail button[aria-selected="true"]{background:color-mix(in srgb,var(--tc) 85%,black);color:#fff;box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--tc),0 3px 8px color-mix(in srgb,var(--tc) 40%,transparent)}
-.rail button:focus-visible{outline:2px solid var(--tc);outline-offset:3px}
+/* inverted tiles on the simulation tabs only: filled with the study's colour, white lines and label; the open one is deeper and ringed */
+.rail button[data-tab="sun"],.rail button[data-tab="wind"],.rail button[data-tab="rain"],.rail button[data-tab="eff"],.rail button[data-tab="daylight"],.rail button[data-tab="vent"],.rail button[data-tab="energy"]{background:color-mix(in srgb,var(--tc) 82%,white);color:#fff;border-radius:10px;transition:background .15s,box-shadow .15s}
+.rail button[data-tab="sun"] svg,.rail button[data-tab="wind"] svg,.rail button[data-tab="rain"] svg,.rail button[data-tab="eff"] svg,.rail button[data-tab="daylight"] svg,.rail button[data-tab="vent"] svg,.rail button[data-tab="energy"] svg{stroke:#fff}
+.rail button[data-tab="sun"]:hover,.rail button[data-tab="wind"]:hover,.rail button[data-tab="rain"]:hover,.rail button[data-tab="eff"]:hover,.rail button[data-tab="daylight"]:hover,.rail button[data-tab="vent"]:hover,.rail button[data-tab="energy"]:hover{background:var(--tc);color:#fff}
+.rail button[data-tab="sun"][aria-selected="true"],.rail button[data-tab="wind"][aria-selected="true"],.rail button[data-tab="rain"][aria-selected="true"],.rail button[data-tab="eff"][aria-selected="true"],.rail button[data-tab="daylight"][aria-selected="true"],.rail button[data-tab="vent"][aria-selected="true"],.rail button[data-tab="energy"][aria-selected="true"]{background:color-mix(in srgb,var(--tc) 85%,black);color:#fff;box-shadow:0 0 0 2px var(--panel),0 0 0 4px var(--tc),0 3px 8px color-mix(in srgb,var(--tc) 40%,transparent)}
+.rail button[data-tab="sun"]:focus-visible,.rail button[data-tab="wind"]:focus-visible,.rail button[data-tab="rain"]:focus-visible,.rail button[data-tab="eff"]:focus-visible,.rail button[data-tab="daylight"]:focus-visible,.rail button[data-tab="vent"]:focus-visible,.rail button[data-tab="energy"]:focus-visible{outline:2px solid var(--tc);outline-offset:3px}
 body[data-tone="sun"]{--tone:#D99404}body[data-tone="wind"]{--tone:#1E9E8E}body[data-tone="rain"]{--tone:#3B7DD8}body[data-tone="eff"]{--tone:#B0568F}body[data-tone="strat"]{--tone:#D0643F}body[data-tone="daylight"]{--tone:#C29A00}body[data-tone="vent"]{--tone:#2A9FC4}body[data-tone="energy"]{--tone:#DD4B39}body[data-tone="site"]{--tone:#3E8E5E}body[data-tone="program"]{--tone:#7A5FC0}
-body[data-tab="site"]{--tabc:#3E8E5E}body[data-tab="program"]{--tabc:#7A5FC0}body[data-tab="sun"]{--tabc:#D99404}body[data-tab="wind"]{--tabc:#1E9E8E}body[data-tab="rain"]{--tabc:#3B7DD8}body[data-tab="eff"]{--tabc:#B0568F}body[data-tab="strat"]{--tabc:#D0643F}body[data-tab="daylight"]{--tabc:#C29A00}body[data-tab="vent"]{--tabc:#2A9FC4}body[data-tab="energy"]{--tabc:#DD4B39}
+body[data-tab="sun"]{--tabc:#D99404}body[data-tab="wind"]{--tabc:#1E9E8E}body[data-tab="rain"]{--tabc:#3B7DD8}body[data-tab="eff"]{--tabc:#B0568F}body[data-tab="daylight"]{--tabc:#C29A00}body[data-tab="vent"]{--tabc:#2A9FC4}body[data-tab="energy"]{--tabc:#DD4B39}
 .panel .tab.active .ptitle{color:var(--tabc,inherit)}
 /* the review panel on the right speaks the colour of the study in view */
 body[data-tone] .review{--accent:var(--tone,#0E6E86);--accent-soft:color-mix(in srgb,var(--tone,#0E6E86) 12%,white);box-shadow:inset 0 3px 0 var(--tone,transparent)}
