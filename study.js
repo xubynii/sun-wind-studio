@@ -1742,7 +1742,7 @@ LAB.hooks.afterSite.push(()=>{ sunResult=null; windResult=null; demCache={key:nu
 LAB.hooks.afterWeather.push(()=>{ if(!SW) return; syncPeriodUI(); renderSky(); if(sunResult){ stale.sun=true; } if(windResult){ stale.wind=true; } if(LAB.rain&&LAB.rain.result){ stale.rain=true; } showStale(); if(!busy) rerender(); });
 LAB.hooks.tab.push(name=>{ if(SW) onTab(name); setTone(name); });
 /* the review panel takes the colour of the study in view: the tab's own colour, else the study drawn on the ground */
-function setTone(name){ const t=({sun:'sun',daylight:'daylight',wind:'wind',vent:'vent',rain:'rain',energy:'energy',eff:'eff'})[name||curTab]||(LAB.S&&LAB.S.impact&&LAB.S.impact.mode)||'none'; document.body.dataset.tone=t; document.body.dataset.tab=name||curTab; }
+function setTone(name){ const t=({sun:'sun',daylight:'daylight',wind:'wind',vent:'vent',rain:'rain',energy:'energy',eff:'eff',strat:'strat'})[name||curTab]||(LAB.S&&LAB.S.impact&&LAB.S.impact.mode)||'none'; document.body.dataset.tone=t; document.body.dataset.tab=name||curTab; }
 /* ---------- pick the mass in the viewport and nudge it on the site with the arrow keys ---------- */
 let massSel=false, selHelper=null, mDown=null; const vpEl=LAB.renderer.domElement.parentElement;
 function massTargets(){ const t=[]; for(const g of [advGroup,lodGroup,dressGroup,LAB.towerGroup]){ if(!g||!g.visible) continue; g.traverse(o=>{ if(o.isMesh&&o.visible&&!o.userData.deco&&!o.userData.labelPlane) t.push(o); }); } return t; }
