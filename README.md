@@ -62,3 +62,10 @@ then open http://localhost:8000/. Any static host works the same way. PDFs downl
 | `site.json`, `rhino3dm.min.js`, `rhino3dm.wasm` | downtown Vancouver site model and the Rhino loader |
 
 Settings persist in the browser's local storage per device.
+
+## Views and the clipping plane
+
+- **3D, Elevation, Section, Plan.** Elevation, Section and Plan are true orthographic views, square to the model: the plan looks straight down with north up, and elevations and sections are level. They stay 2D: dragging pans, the wheel zooms about the cursor, and only 3D orbits. Press Elevation or Section again to turn 90 degrees.
+- **Clip.** A clipping plane like Rhino's. It can be vertical, for sections, or horizontal, for plan cuts at any height including below grade. Set its turn and position in the panel, or drag the orange handle in 3D. Flip side keeps the other half, and Look at the section opens the orthographic view of the cut.
+- **Cut display.** While the plane is on, the ground becomes a block of earth and cut solids show a flat fill: dark for the building, tan for the earth, brown for basements. Section always frames the basements.
+- **Import.** Choosing a model file goes straight to the model check: layers take their guessed roles. Change layer roles reopens the role table and Re-import applies it. Only a file with no massing layer stops at the table.

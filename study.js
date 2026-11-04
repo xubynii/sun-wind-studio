@@ -172,21 +172,120 @@ function towerRaster(cs,nx,ny){
 function dilate(src,nx,ny,n){ if(n<=0) return src; const out=new Uint8Array(src); for(let k=0;k<src.length;k++){ if(!src[k]) continue; const x=k%nx,y=(k/nx)|0; for(let dy=-n;dy<=n;dy++) for(let dx=-n;dx<=n;dx++){ if(dx*dx+dy*dy>n*n+n) continue; const xx=x+dx,yy=y+dy; if(xx<0||yy<0||xx>=nx||yy>=ny) continue; out[yy*nx+xx]=1; } } return out; }
 function plazaCellsAt(cs,nx,ny){ const N=nx*ny, out=new Uint8Array(N); const site=LAB.site; if(site) for(const m of site.meshes){ if(m.layer!=='plaza'&&m.layer!=='midblock') continue; for(let i=0;i<m.f.length;i+=3){ const a=m.f[i]*3,b=m.f[i+1]*3,c=m.f[i+2]*3; rasterTri(m.v[a],m.v[a+1],m.v[b],m.v[b+1],m.v[c],m.v[c+1],cs,DOM.xmin,DOM.ymin,nx,ny,k=>{ out[k]=1; }); } } return out; }
 
-/* ---------- true plan, elevation and section: an orthographic camera stands in for the core's perspective camera; the section adds a clipping plane through the tower, facing the viewer ---------- */
+/* ---------- true plan, elevation and section, and a Rhino-style clipping plane ----------
+   Plan, Elevation and Section render through an orthographic camera set square to the view (plan straight down with north up,
+   elevations and sections level), and stay 2D: dragging pans and the wheel zooms about the cursor, nothing orbits.
+   The clipping plane cuts the whole scene; a vertical plane gives sections, a horizontal one gives plan cuts at any height,
+   below grade too. In 3D it shows as a tinted plane with a handle to drag it along its normal. While it is on, the ground
+   becomes a block of earth, so the cut shows the basements in their ground. */
 const view={ortho:false,section:false};
-const orthoCam=new THREE.OrthographicCamera(-1,1,1,-1,1,8000); const secPlane=new THREE.Plane(new THREE.Vector3(0,0,-1),0); const NOCLIP=[];
+const orthoCam=new THREE.OrthographicCamera(-1,1,1,-1,1,20000); const NOCLIP=[];
+const clip={on:false,kind:'v',ang:0,off:0,h:1.2,flip:false};
+const clipPlane=new THREE.Plane();
+const clipBelow=()=>{ const B=(LAB.S.typology==='upload'&&LAB.belowFloors)||[]; let d=0; for(const f of B) d=Math.max(d,-f.z); return d; };
+const clipCentre=()=>new THREE.Vector3(LAB.S.posX,0,-LAB.S.posY);
+function clipAxis(){ return clip.kind==='v'?new THREE.Vector3(Math.sin(clip.ang),0,Math.cos(clip.ang)):new THREE.Vector3(0,1,0); }
+function clipPoint(){ const c=clipCentre(); return clip.kind==='v'?c.addScaledVector(clipAxis(),clip.off):new THREE.Vector3(c.x,clip.h,c.z); }
+/* the kept side faces away from the axis (the near half of a section is removed); Flip keeps the other side */
+function updateClipPlane(){ const n=clipAxis().negate(); if(clip.flip) n.negate(); clipPlane.setFromNormalAndCoplanarPoint(n,clipPoint()); return clipPlane; }
+const CLIP_MAT=new THREE.MeshBasicMaterial({color:new THREE.Color('#E8692B'),transparent:true,opacity:0.1,side:THREE.DoubleSide,depthWrite:false});
+const CLIP_LINE=new THREE.LineBasicMaterial({color:new THREE.Color('#E8692B')});
+const clipWidget=new THREE.Group(); clipWidget.userData.deco=true; clipWidget.renderOrder=8; clipWidget.visible=false;
+const clipSheet=new THREE.Mesh(new THREE.PlaneGeometry(1,1),CLIP_MAT); clipSheet.userData.deco=true;
+const clipFrame=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-.5,-.5,0),new THREE.Vector3(.5,-.5,0),new THREE.Vector3(.5,.5,0),new THREE.Vector3(-.5,.5,0)]),CLIP_LINE);
+clipWidget.add(clipSheet); clipWidget.add(clipFrame); LAB.scene.add(clipWidget);
+const clipHandle=new THREE.Mesh(new THREE.SphereGeometry(1,20,14),new THREE.MeshBasicMaterial({color:new THREE.Color('#E8692B')})); clipHandle.userData.deco=true; clipHandle.renderOrder=9; clipHandle.visible=false; LAB.scene.add(clipHandle);
+const clipArrow=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0),new THREE.Vector3(0,0,1)]),CLIP_LINE); clipArrow.userData.deco=true; clipArrow.visible=false; LAB.scene.add(clipArrow);
+const EARTH_MAT=new THREE.MeshLambertMaterial({color:new THREE.Color('#D3C4AA'),side:THREE.DoubleSide});
+const earth=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),EARTH_MAT); earth.userData.deco=true; earth.visible=false; earth.receiveShadow=true; LAB.scene.add(earth);
+function placeClipWidget(show3d){ const on=clip.on; const S=LAB.S, H=S.height||100, below=clipBelow();
+  const dep=Math.max(8,below+6); earth.visible=on; if(on){ earth.scale.set(420,dep,420); earth.position.set(S.posX,-0.06-dep/2,-S.posY); }
+  BELOW_MAT.opacity=on?0.85:0.55;
+  const w=show3d&&on; clipWidget.visible=w; clipHandle.visible=w; clipArrow.visible=w; if(!w) return;
+  const n=updateClipPlane().normal, p=clipPoint(); const eps=0.06; const R=Math.max(1.2,LAB.orbit.dist*0.011);
+  clipWidget.rotation.set(0,0,0);
+  if(clip.kind==='v'){ const W=Math.max(140,Math.sqrt(LAB.upload&&LAB.upload.footprint||3000)*2.6), top=H+12, bot=-(below+4);
+    clipWidget.position.set(p.x+n.x*eps,(top+bot)/2,p.z+n.z*eps); clipWidget.rotation.y=Math.atan2(n.x,n.z); clipWidget.scale.set(W,top-bot,1);
+    clipHandle.position.set(p.x+n.x*eps,top+R*1.5,p.z+n.z*eps); }
+  else { const W=Math.max(160,Math.sqrt(LAB.upload&&LAB.upload.footprint||3000)*3); clipWidget.position.set(p.x,p.y+n.y*eps,p.z); clipWidget.rotation.x=-Math.PI/2; clipWidget.scale.set(W,W,1);
+    clipHandle.position.set(p.x+W/2,p.y+n.y*eps,p.z-W/2); }
+  clipHandle.scale.setScalar(R); const ax=clipAxis(); clipArrow.position.copy(clipHandle.position); clipArrow.lookAt(clipHandle.position.clone().add(ax)); clipArrow.scale.set(1,1,R*5); }
+/* cut fill: while the plane is on, the inside of every cut solid shows as a flat fill, as Rhino's section display does
+   (the inside faces seen through the cut are the back faces): dark for the building, tan for the earth, brown for basements */
+const CAP={value:0}; const CAP_COL={tower:new THREE.Color('#3A3F45'),earth:new THREE.Color('#B9A27E'),below:new THREE.Color('#5E4B3A')};
+function capMaterial(m){ if(!m||m.userData.capped||m.side!==THREE.DoubleSide||!(m.isMeshLambertMaterial||m.isMeshStandardMaterial||m.isMeshPhongMaterial||m.isMeshBasicMaterial)) return; if(m===CLIP_MAT) return;
+  const col={value:m===EARTH_MAT?CAP_COL.earth:m===BELOW_MAT?CAP_COL.below:CAP_COL.tower}; m.userData.capped=true; const prev=m.onBeforeCompile;
+  m.onBeforeCompile=(sh,r)=>{ if(prev) prev.call(m,sh,r); sh.uniforms.uCap=CAP; sh.uniforms.uCapCol=col; sh.fragmentShader='uniform float uCap;\nuniform vec3 uCapCol;\n'+sh.fragmentShader.replace(/\}\s*$/,'\tif(uCap>0.5&&!gl_FrontFacing) gl_FragColor=vec4(uCapCol,1.0);\n}'); };
+  m.customProgramCacheKey=()=>'cap'; m.needsUpdate=true; }
+function capScene(sc){ sc.traverse(o=>{ if(!o.isMesh||!o.visible||(o.userData&&o.userData.deco&&o!==earth)) return; const ms=Array.isArray(o.material)?o.material:[o.material]; for(const m of ms) capMaterial(m); }); }
+/* the orthographic camera is placed square to the view: straight down for the plan (north up), level for elevations and sections */
+function placeOrtho(){ const o=LAB.orbit, pc=LAB.camera; const t=o.target; const far=6000;
+  if(o.phi<0.05){ orthoCam.up.set(0,0,-1); orthoCam.position.set(t.x,t.y+far,t.z); }
+  else { orthoCam.up.set(0,1,0); orthoCam.position.set(t.x+far*Math.sin(o.theta),t.y,t.z+far*Math.cos(o.theta)); }
+  orthoCam.lookAt(t); const hh=o.dist*Math.tan(pc.fov*Math.PI/360), hw=hh*pc.aspect; orthoCam.left=-hw; orthoCam.right=hw; orthoCam.top=hh; orthoCam.bottom=-hh; orthoCam.near=1; orthoCam.far=far*2+4000; orthoCam.updateProjectionMatrix(); orthoCam.updateMatrixWorld(); return {hh,hw}; }
 (function patchRender(){ const R=LAB.renderer, orig=R.render.bind(R);
   R.render=function(sc,cam){
     if(cam!==LAB.camera){ R.clippingPlanes=NOCLIP; return orig(sc,cam); }
-    const o=LAB.orbit;
-    if(view.section){ const dx=Math.sin(o.theta), dz=Math.cos(o.theta); secPlane.normal.set(-dx,0,-dz); secPlane.constant=dx*o.target.x+dz*o.target.z; R.clippingPlanes=[secPlane]; } else R.clippingPlanes=NOCLIP;
-    if(view.ortho){ const pc=LAB.camera; orthoCam.position.copy(pc.position); orthoCam.quaternion.copy(pc.quaternion); const hh=o.dist*Math.tan(pc.fov*Math.PI/360), hw=hh*pc.aspect; orthoCam.left=-hw; orthoCam.right=hw; orthoCam.top=hh; orthoCam.bottom=-hh; orthoCam.updateProjectionMatrix(); return orig(sc,orthoCam); }
+    placeClipWidget(!view.ortho&&!clip.capturing);
+    if(clip.on) capScene(sc); CAP.value=clip.on?1:0;
+    R.clippingPlanes=clip.on?[updateClipPlane()]:NOCLIP;
+    if(view.ortho){ placeOrtho(); return orig(sc,orthoCam); }
     return orig(sc,cam); };
-  const origCap=LAB.captureView; LAB.captureView=function(opts){ const s={o:view.ortho,s:view.section}; view.ortho=!!(opts&&opts.plan); view.section=false; try{ return origCap(opts); } finally{ view.ortho=s.o; view.section=s.s; } };
+  const origCap=LAB.captureView; LAB.captureView=function(opts){ const s={o:view.ortho,c:clip.on}; view.ortho=!!(opts&&opts.plan); clip.on=false; clip.capturing=true; try{ return origCap(opts); } finally{ view.ortho=s.o; clip.on=s.c; clip.capturing=false; LAB.requestRender(); } };
+  LAB.pickCamera=()=>view.ortho?orthoCam:null;
 })();
-function setViewMode(ortho,section,theta,phi){ view.ortho=ortho; view.section=section; const o=LAB.orbit; if(theta!==undefined) o.theta=theta; if(phi!==undefined) o.phi=phi; o.target.set(LAB.S.posX,LAB.S.height*0.42,-LAB.S.posY); syncViewButtons(); LAB.requestRender(); }
-function syncViewButtons(){ $('view-top').setAttribute('aria-pressed',String(view.ortho&&!view.section&&LAB.orbit.phi<0.05)); $('view-elev').setAttribute('aria-pressed',String(view.ortho&&!view.section&&LAB.orbit.phi>1.5)); $('view-section').setAttribute('aria-pressed',String(view.section)); }
-
+/* 2D navigation in the orthographic views: drag pans (any button), the wheel zooms about the cursor, touch pans with one finger */
+(function orthoNav(){ const el=LAB.renderer.domElement.parentElement||document.getElementById('viewport'); let last=null; const live=new Set();
+  const axes=()=>{ const o=LAB.orbit; return o.phi<0.05?{r:new THREE.Vector3(1,0,0),u:new THREE.Vector3(0,0,-1)}:{r:new THREE.Vector3(Math.cos(o.theta),0,-Math.sin(o.theta)),u:new THREE.Vector3(0,1,0)}; };
+  el.addEventListener('pointerdown',e=>{ live.add(e.pointerId); last={x:e.clientX,y:e.clientY}; },true);
+  const done=e=>{ live.delete(e.pointerId); if(!live.size) last=null; }; el.addEventListener('pointerup',done,true); el.addEventListener('pointercancel',done,true);
+  el.addEventListener('pointermove',e=>{ if(!view.ortho||!e.buttons||live.size!==1||!last||drag||clipDrag) return; if(e.target.closest&&e.target.closest('.viewtools,.clip-panel,.abar,.mass-hint')) return;
+    e.stopImmediatePropagation(); const o=LAB.orbit, H=LAB.renderer.domElement.clientHeight||1; const hh=o.dist*Math.tan(LAB.camera.fov*Math.PI/360), k=2*hh/H; const A=axes();
+    o.target.addScaledVector(A.r,-(e.clientX-last.x)*k).addScaledVector(A.u,(e.clientY-last.y)*k); last={x:e.clientX,y:e.clientY}; LAB.requestRender(); },true);
+  el.addEventListener('wheel',e=>{ if(!view.ortho) return; e.preventDefault(); e.stopImmediatePropagation(); const o=LAB.orbit, c=LAB.renderer.domElement, rc=c.getBoundingClientRect();
+    const nd=Math.min(3000,Math.max(15,o.dist*(1+e.deltaY*0.0012))), f=nd/o.dist; const hh=o.dist*Math.tan(LAB.camera.fov*Math.PI/360), hw=hh*LAB.camera.aspect;
+    const ux=(((e.clientX-rc.left)/rc.width)*2-1)*hw, uy=(-((e.clientY-rc.top)/rc.height)*2+1)*hh; const A=axes(); o.target.addScaledVector(A.r,ux*(1-f)).addScaledVector(A.u,uy*(1-f)); o.dist=nd; LAB.requestRender(); },{capture:true,passive:false});
+})();
+/* drag the handle in 3D to slide the plane along its normal */
+let clipDrag=null;
+(function clipDragging(){ const el=document.getElementById('viewport'); const rc=new THREE.Raycaster();
+  const scr=v=>{ const c=LAB.renderer.domElement, p=v.clone().project(LAB.camera); return {x:(p.x+1)/2*c.clientWidth,y:(1-p.y)/2*c.clientHeight}; };
+  el.addEventListener('pointerdown',e=>{ if(!clip.on||view.ortho||e.button!==0||!clipHandle.visible) return; const c=LAB.renderer.domElement, r=c.getBoundingClientRect();
+    rc.setFromCamera({x:((e.clientX-r.left)/r.width)*2-1,y:-((e.clientY-r.top)/r.height)*2+1},LAB.camera); if(!rc.intersectObject(clipHandle,false).length) return;
+    e.stopImmediatePropagation(); el.setPointerCapture(e.pointerId); const a=scr(clipHandle.position), b=scr(clipHandle.position.clone().add(clipAxis())); clipDrag={id:e.pointerId,x:e.clientX,y:e.clientY,sx:b.x-a.x,sy:b.y-a.y,v0:clip.kind==='v'?clip.off:clip.h}; el.style.cursor='grabbing'; },true);
+  el.addEventListener('pointermove',e=>{ if(!clipDrag||e.pointerId!==clipDrag.id){ if(clip.on&&!view.ortho&&!e.buttons&&clipHandle.visible){ const c=LAB.renderer.domElement, r=c.getBoundingClientRect(); rc.setFromCamera({x:((e.clientX-r.left)/r.width)*2-1,y:-((e.clientY-r.top)/r.height)*2+1},LAB.camera); if(rc.intersectObject(clipHandle,false).length){ el.style.cursor='grab'; el.title='Drag to move the clipping plane'; } else if(el.title){ el.title=''; } } return; }
+    e.stopImmediatePropagation(); const d=clipDrag, L2=d.sx*d.sx+d.sy*d.sy||1; const m=((e.clientX-d.x)*d.sx+(e.clientY-d.y)*d.sy)/L2; setClipPos(d.v0+m,!e.altKey); },true);
+  const end=e=>{ if(!clipDrag||e.pointerId!==clipDrag.id) return; clipDrag=null; el.style.cursor=''; try{ el.releasePointerCapture(e.pointerId); }catch(x){} e.stopImmediatePropagation(); };
+  el.addEventListener('pointerup',end,true); el.addEventListener('pointercancel',end,true);
+})();
+function clipRange(){ const S=LAB.S; if(clip.kind==='h') return {min:-(Math.ceil(clipBelow())+3),max:Math.ceil((S.height||100)+5),step:0.1};
+  const R=Math.ceil(Math.max(60,Math.sqrt(LAB.upload&&LAB.upload.footprint||3000)*1.3)); return {min:-R,max:R,step:0.1}; }
+function setClipPos(v,snap){ const r=clipRange(); v=Math.max(r.min,Math.min(r.max,snap?Math.round(v*2)/2:Math.round(v*10)/10)); if(clip.kind==='v') clip.off=v; else clip.h=v; syncClipUI(); LAB.requestRender(); }
+function setClip(patch){ Object.assign(clip,patch); syncClipUI(); syncViewButtons(); LAB.requestRender(); }
+function syncClipUI(){ const P=$('clip-panel'); if(!P) return; P.hidden=!clip.on; $('view-clip').setAttribute('aria-pressed',String(clip.on)); if(!clip.on) return;
+  P.querySelectorAll('[data-ck]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.ck===clip.kind)));
+  const r=clipRange(), v=clip.kind==='v'?clip.off:clip.h, s=$('clip-pos'); s.min=r.min; s.max=r.max; s.step=r.step; s.value=v;
+  $('clip-pos-l').textContent=clip.kind==='v'?'Position':'Height'; $('clip-pos-v').textContent=(clip.kind==='v'?(v>0?'+':'')+v.toFixed(1)+' m from the tower centre':(v<0?v.toFixed(1)+' m, below grade':v.toFixed(1)+' m above grade'));
+  $('clip-ang-row').hidden=clip.kind!=='v'; const deg=Math.round(((clip.ang*180/Math.PI)%360+360)%360); $('clip-ang').value=deg; $('clip-ang-v').textContent=deg%90===0?'looking '+['north','west','south','east'][(deg/90+(clip.flip?2:0))%4]:deg+'°';
+  $('clip-look').textContent=clip.kind==='v'?'Look at the section':'Look at the plan cut'; }
+function setViewMode(ortho,section,theta,phi){ view.ortho=ortho; view.section=section; const o=LAB.orbit; if(theta!==undefined) o.theta=theta; if(phi!==undefined) o.phi=phi;
+  if(ortho&&phi>1.5){ const S=LAB.S, H=S.height||100, below=clipBelow(); o.target.set(S.posX,(H-below)/2,-S.posY); o.dist=((H+below)*0.62+8)/Math.tan(LAB.camera.fov*Math.PI/360); }
+  else if(ortho){ const S=LAB.S; o.target.set(S.posX,clip.on&&clip.kind==='h'?clip.h:0,-S.posY); o.dist=Math.max(220,(S.height||100)*1.4); }
+  else o.target.set(LAB.S.posX,LAB.S.height*0.42,-LAB.S.posY);
+  syncViewButtons(); syncClipUI(); LAB.requestRender(); }
+function syncViewButtons(){ const o=LAB.orbit; $('view-top').setAttribute('aria-pressed',String(view.ortho&&o.phi<0.05)); $('view-elev').setAttribute('aria-pressed',String(view.ortho&&!view.section&&o.phi>1.5)); $('view-section').setAttribute('aria-pressed',String(view.ortho&&view.section));
+  $('view-iso').setAttribute('aria-pressed',String(!view.ortho)); const v=$('viewport'); if(v) v.classList.toggle('is-2d',view.ortho); const h=$('view2d-hint'); if(h){ h.hidden=!view.ortho; h.textContent=view.ortho?(o.phi<0.05?'Plan':view.section?'Section':'Elevation')+' · orthographic · drag to pan · scroll to zoom · 3D to orbit':''; } }
+function buildClipUI(){
+  $('view-clip').addEventListener('click',()=>{ if(clip.on) setClip({on:false}); else setClip({on:true,kind:view.ortho&&LAB.orbit.phi<0.05?'h':'v',ang:view.ortho?LAB.orbit.theta:Math.round(LAB.orbit.theta/(Math.PI/2))*(Math.PI/2)}); if(!clip.on&&view.section) setViewMode(true,false); });
+  $('clip-panel').querySelectorAll('[data-ck]').forEach(b=>b.addEventListener('click',()=>{ setClip({kind:b.dataset.ck}); if(view.ortho) $('clip-look').click(); }));
+  $('clip-pos').addEventListener('input',e=>setClipPos(parseFloat(e.target.value),false));
+  $('clip-ang').addEventListener('input',e=>{ setClip({ang:parseFloat(e.target.value)*Math.PI/180}); if(view.section) setViewMode(true,true,clip.ang+(clip.flip?Math.PI:0),Math.PI/2); });
+  $('clip-flip').addEventListener('click',()=>{ setClip({flip:!clip.flip}); if(view.section) setViewMode(true,true,clip.ang+(clip.flip?Math.PI:0),Math.PI/2); });
+  $('clip-look').addEventListener('click',()=>{ if(clip.kind==='v') setViewMode(true,true,clip.ang+(clip.flip?Math.PI:0),Math.PI/2); else setViewMode(true,false,0,0); });
+  $('clip-close').addEventListener('click',()=>{ setClip({on:false}); if(view.section) setViewMode(true,false); });
+  LAB.hooks.afterUpdate.push(()=>{ if(clip.on) syncClipUI(); });
+  syncClipUI(); syncViewButtons(); }
+LAB.clip={get state(){return clip;}, set:setClip, view, setViewMode};
 /* ---------- level of detail: fused massing blocks in Basic; floors and a façade built from the strategy zones in Advanced; uploaded files as modeled ---------- */
 const advGroup=new THREE.Group(), lodGroup=new THREE.Group(), dressGroup=new THREE.Group(); LAB.scene.add(advGroup); LAB.scene.add(lodGroup); LAB.scene.add(dressGroup); let advVersion=-1;
 const mkMat=c=>new THREE.MeshLambertMaterial({color:c,side:THREE.DoubleSide});
@@ -701,10 +800,11 @@ function buildUI(){
   $('reslice').addEventListener('click',()=>{ SW.sliceOK=SW.sliceOK||{}; delete SW.sliceOK[String(LAB.uploadRaw?LAB.uploadRaw.version:0)]; maybeSliceDialog(); if(!adv()) LAB.toast&&LAB.toast('Slicing options open in Design development.'); });
   if(LAB.rain) LAB.rain.buildUI();
   // true views: the core's handlers run first and set the orbit; these refine them
-  $('view-top').addEventListener('click',()=>setViewMode(true,false,0,0));
-  $('view-elev').addEventListener('click',()=>setViewMode(true,false,view.ortho&&!view.section&&LAB.orbit.phi>1.5?LAB.orbit.theta+Math.PI/2:0,Math.PI/2));
-  $('view-section').addEventListener('click',()=>setViewMode(true,true,view.section?LAB.orbit.theta+Math.PI/2:0,Math.PI/2));
+  $('view-top').addEventListener('click',()=>{ if(clip.on&&clip.kind==='v') setClip({on:false}); setViewMode(true,false,0,0); });
+  $('view-elev').addEventListener('click',()=>{ const th=view.ortho&&!view.section&&LAB.orbit.phi>1.5?LAB.orbit.theta+Math.PI/2:0; setClip({on:false}); setViewMode(true,false,th,Math.PI/2); });
+  $('view-section').addEventListener('click',()=>{ const th=view.section?LAB.orbit.theta+Math.PI/2:(clip.on&&clip.kind==='v'?clip.ang+(clip.flip?Math.PI:0):0); setClip({on:true,kind:'v',ang:th,flip:false}); setViewMode(true,true,th,Math.PI/2); });
   $('view-iso').addEventListener('click',()=>setViewMode(false,false)); $('view-site').addEventListener('click',()=>{ view.ortho=false; view.section=false; syncViewButtons(); LAB.requestRender(); });
+  buildClipUI();
   buildZoneUI();
   LAB.controlsFor($('params-glazing'),GLAZE_P,'gl',()=>SW.glaz,()=>{ LAB.syncFor($('params-glazing'),GLAZE_P,'gl',SW.glaz); persist(); if(sunResult) stale.sun=true; showStale(); rerender(); });
   LAB.controlsFor($('params-pv'),PV_P,'pv',()=>SW.pv,()=>{ LAB.syncFor($('params-pv'),PV_P,'pv',SW.pv); live(); });
@@ -1216,7 +1316,7 @@ function groundPoint(e){ const ray=pickRay(e); const d=ray.ray.direction; if(Mat
 function massAt(e){ return pickRay(e).intersectObjects(massTargets(),false).length>0; }
 function slideGroups(dx,dy){ for(const g of [lodGroup,dressGroup,LAB.towerGroup,LAB.waterGroup,selHelper]){ if(g) g.position.set(dx,0,-dy); } advGroup.position.set(LAB.S.posX+dx,0,-(LAB.S.posY+dy)); LAB.requestRender(); }
 function hintText(dx,dy){ const S=LAB.S; const x=S.posX+(dx||0), y=S.posY+(dy||0); return `<b>Mass selected</b> · ${x>0?'+':''}${x} m E, ${y>0?'+':''}${y} m N · drag to move · arrows nudge 1 m, Shift 5 m · [ ] rotate · Esc`; }
-vpEl.addEventListener('pointerdown',e=>{ mDown=null; if(e.button!==0||e.target.closest('.viewtools,.abar,.hud,.compass,.mass-hint')) return; mDown={x:e.clientX,y:e.clientY,b:e.button};
+vpEl.addEventListener('pointerdown',e=>{ mDown=null; if(e.button!==0||e.target.closest('.viewtools,.clip-panel,.abar,.hud,.compass,.mass-hint')) return; mDown={x:e.clientX,y:e.clientY,b:e.button};
   if(massAt(e)){ const g=groundPoint(e); if(g){ e.stopImmediatePropagation(); vpEl.setPointerCapture(e.pointerId); drag={id:e.pointerId,ox:LAB.S.posX-g.x,oy:LAB.S.posY-g.y,dx:0,dy:0,moved:false}; if(!massSel){ massSel=true; refreshMassSel(); } vpEl.style.cursor='grabbing'; } } },true);
 vpEl.addEventListener('pointermove',e=>{ if(drag){ if(e.pointerId!==drag.id) return; const g=groundPoint(e); if(!g) return; const P=LAB.PARAMS, S=LAB.S; const snap=e.altKey?0.1:1; let nx=Math.round((g.x+drag.ox)/snap)*snap, ny=Math.round((g.y+drag.oy)/snap)*snap; nx=Math.max(P.posX.min,Math.min(P.posX.max,nx)); ny=Math.max(P.posY.min,Math.min(P.posY.max,ny)); drag.dx=+(nx-S.posX).toFixed(1); drag.dy=+(ny-S.posY).toFixed(1); drag.moved=drag.moved||Math.hypot(e.clientX-mDown.x,e.clientY-mDown.y)>3; slideGroups(drag.dx,drag.dy); $('mass-hint').innerHTML=hintText(drag.dx,drag.dy); return; }
   if(e.buttons) return; vpEl.style.cursor=massAt(e)?'grab':''; });
