@@ -305,9 +305,9 @@ function levelName(f,below){ return below?'B'+f.bi:'L'+(f.i+1); }
 function belowSorted(){ const B=((LAB.S.typology==='upload'&&LAB.belowFloors)||[]).slice().sort((a,b)=>b.z-a.z); B.forEach((f,k)=>{ f.bi=k+1; }); return B; }
 function secGeom(){ const S=LAB.S, th=clip.ang+(clip.flip?Math.PI:0); const d={x:Math.sin(clip.ang),y:-Math.cos(clip.ang)}; const r={x:Math.cos(th),y:Math.sin(th)};
   const L=clip.flip?{x:d.x,y:d.y}:{x:-d.x,y:-d.y}; const p0={x:S.posX+d.x*clip.off,y:S.posY+d.y*clip.off}; return {th,d,r,L,p0}; }
-function runsOf(f,p0,r,step){ const S=LAB.S, m=f.mask; if(!m) return {cut:[],core:[]}; const cl=LAB.toLocal(f,S.posX,S.posY), ch=(f.core||0)/2;
+function runsOf(f,p0,r,step){ const S=LAB.S, m=f.mask; if(!m) return {cut:[],core:[]}; const CR=coreRectsOf(f);
   const uc=(f.cx-p0.x)*r.x+(f.cy-p0.y)*r.y, R=Math.hypot(m.nx,m.ny)/2+2; const cut=[], core=[]; let a=null, c=null; const N=Math.ceil(2*R/step);
-  for(let k=0;k<=N+1;k++){ const u=uc-R+k*step; let ins=false, isc=false; if(k<=N){ const l=LAB.toLocal(f,p0.x+r.x*u,p0.y+r.y*u); const ix=Math.floor(l.x-m.x0), iy=Math.floor(l.y-m.y0); ins=ix>=0&&iy>=0&&ix<m.nx&&iy<m.ny&&!!m.cells[iy*m.nx+ix]; isc=ins&&ch>0&&Math.abs(l.x-cl.x)<=ch&&Math.abs(l.y-cl.y)<=ch; }
+  for(let k=0;k<=N+1;k++){ const u=uc-R+k*step; let ins=false, isc=false; if(k<=N){ const l=LAB.toLocal(f,p0.x+r.x*u,p0.y+r.y*u); const ix=Math.floor(l.x-m.x0), iy=Math.floor(l.y-m.y0); const inC=!!inCoreRect(CR,l.x,l.y); ins=(ix>=0&&iy>=0&&ix<m.nx&&iy<m.ny&&!!m.cells[iy*m.nx+ix])||inC; isc=inC; }
     if(ins&&a===null) a=u-step/2; if(!ins&&a!==null){ cut.push([a,u-step/2]); a=null; } if(isc&&c===null) c=u-step/2; if(!isc&&c!==null){ core.push([c,u-step/2]); c=null; } }
   return {cut:cut.filter(q=>q[1]-q[0]>0.6),core:core.filter(q=>q[1]-q[0]>0.6)}; }
 /* projection of a floor onto a horizontal axis: all cells, or only those on the far side of the cut */
@@ -315,7 +315,7 @@ function spanOf(f,o,r,L){ const m=f.mask; if(!m) return []; const bins=new Map()
   const ks=[...bins.keys()].sort((a,b)=>a-b); const out=[]; for(const k of ks){ const l=out[out.length-1]; if(l&&k<=l[1]) l[1]=k+1; else out.push([k,k+1]); } return out; }
 function minus(A,B){ const out=[]; for(const [a,b] of A){ let segs=[[a,b]]; for(const [c,d] of B){ const nx=[]; for(const [x,y] of segs){ if(d<=x||c>=y){ nx.push([x,y]); continue; } if(c>x) nx.push([x,c]); if(d<y) nx.push([d,y]); } segs=nx; } for(const s of segs) if(s[1]-s[0]>0.3) out.push(s); } return out; }
 const compass=(x,y)=>Math.abs(x)>=Math.abs(y)?(x>0?'E':'W'):(y>0?'N':'S');
-function sectionCut(){ const G=secGeom(), F=LAB.floors||[], B=belowSorted(); const key=[F.length&&F[0],B.length&&B[0],F.length,B.length,clip.ang,clip.off,clip.flip,LAB.S.posX,LAB.S.posY,LAB.S.rotDeg].join('|');
+function sectionCut(){ const G=secGeom(), F=LAB.floors||[], B=belowSorted(); const key=[F.length&&F[0],B.length&&B[0],F.length,B.length,clip.ang,clip.off,clip.flip,LAB.S.posX,LAB.S.posY,LAB.S.rotDeg,LAB.modelParts&&LAB.modelParts.rawVersion].join('|');
   if(SHEET.key===key&&SHEET.cut&&SHEET.F===F) return SHEET.cut;
   const rows=[]; for(const f of B.slice().reverse()) rows.push({f,below:true,...runsOf(f,G.p0,G.r,0.25)}); for(const f of F) rows.push({f,below:false,...runsOf(f,G.p0,G.r,0.25)});
   SHEET.key=key; SHEET.F=F; SHEET.cut={G,rows}; return SHEET.cut; }
@@ -371,7 +371,7 @@ function drawSheet(){ const o=LAB.orbit; const planOn=planActive()&&!clip.captur
           if(st==='doubleskin'){ const Dd=Math.max(0.3,D); for(const du of [-0.03,0.03]) el('line',{x1:sx(out(Dd)+du).toFixed(1),x2:sx(out(Dd)+du).toFixed(1),y1:sy(y0).toFixed(1),y2:sy(top).toFixed(1),stroke:'#2F5F8A','stroke-width':0.9},svg); pr(out(0),out(Dd),top-T,top-T+0.1); } }
       }
       for(const [c0,c1] of q.core){ pr(c0,c0+TW,y0,y1); pr(c1-TW,c1,y0,y1);
-        const ch2=(f.core||0)/2, cl=LAB.toLocal(f,LAB.S.posX,LAB.S.posY), LY=coreLayout(cl.x-ch2,cl.x+ch2,cl.y-ch2,cl.y+ch2); const at=u=>LAB.toLocal(f,G.p0.x+G.r.x*u,G.p0.y+G.r.y*u);
+        const at=u=>LAB.toLocal(f,G.p0.x+G.r.x*u,G.p0.y+G.r.y*u); const lm=at((c0+c1)/2); const CRr=inCoreRect(coreRectsOf(f),lm.x,lm.y,0.5)||coreRectsOf(f)[0]; if(!CRr) continue; const LY=coreLayout(CRr.x0,CRr.x1,CRr.y0,CRr.y1);
         const la=at(c0), lb=at(c1); let split=null; if(LY.fits&&(la.x-LY.xs)*(lb.x-LY.xs)<0) split=c0+(c1-c0)*(LY.xs-la.x)/(lb.x-la.x);
         const parts=split!=null?[[c0,split,la.x<LY.xs],[split,c1,lb.x<LY.xs]]:[[c0,c1,!LY.fits||((la.x+lb.x)/2<LY.xs)]];
         if(split!=null) pr(split-0.1,split+0.1,y0,y1);
@@ -381,8 +381,9 @@ function drawSheet(){ const o=LAB.orbit; const planOn=planActive()&&!clip.captur
             let d1=`M${sx(a0+0.1).toFixed(1)} ${sy(y0).toFixed(1)}L${sx(s0).toFixed(1)} ${sy(y0).toFixed(1)}`; for(let i=1;i<=nst;i++){ const ux=s0+run*i/nst, yv=y0+(ym-y0)*i/nst; d1+=`L${sx(s0+run*(i-1)/nst).toFixed(1)} ${sy(yv).toFixed(1)}L${sx(ux).toFixed(1)} ${sy(yv).toFixed(1)}`; }
             el('path',{d:d1,fill:'none',stroke:ink,'stroke-width':0.8},svg); el('line',{x1:sx(s0).toFixed(1),y1:(sy(y0)+0).toFixed(1),x2:sx(s1).toFixed(1),y2:sy(ym).toFixed(1),stroke:ink,'stroke-width':0.6},svg);
             pr(s1,Math.min(a1-0.05,s1+1.2),ym-0.2,ym); el('line',{x1:sx(s1).toFixed(1),y1:sy(ym).toFixed(1),x2:sx(s0).toFixed(1),y2:sy(top-T).toFixed(1),stroke:'#6B7078','stroke-width':0.7,'stroke-dasharray':'4 2'},svg); } } } }
-      // room tag in the largest room of the storey
-      { const rooms=q.cut.slice().sort((A,B)=>(B[1]-B[0])-(A[1]-A[0])); const R0=rooms[0]; if(R0&&Math.abs(ky)*f.h>22&&Math.abs(kx)*(R0[1]-R0[0])>50){ const free=minus([R0],q.core.map(([c0,c1])=>[c0-0.8,c1+0.8])).sort((A,B)=>(B[1]-B[0])-(A[1]-A[0])); const FR=free[0]||R0; if(Math.abs(kx)*(FR[1]-FR[0])<44) return; let mid=(FR[0]+FR[1])/2; const pr2=LAB.PROG&&LAB.PROG[f.prog]; const t=el('text',{x:sx(mid).toFixed(1),y:(sy(f.z+(f.h-T)/2)+3).toFixed(1),'text-anchor':'middle','font-size':9,'letter-spacing':'0.05em',fill:'#5F646B','font-family':'var(--font-b),sans-serif',stroke:'#fff','stroke-width':3,'paint-order':'stroke'},svg); t.textContent=q.below?'BASEMENT':((pr2&&pr2.name)||'FLOOR').toUpperCase(); } }
+      // room tag in every room the cut passes through, so masses either side of a void are each named
+      if(Math.abs(ky)*f.h>22) for(const R0 of q.cut){ if(Math.abs(kx)*(R0[1]-R0[0])<44) continue; const free=minus([R0],q.core.map(([c0,c1])=>[c0-0.8,c1+0.8])).sort((A,B)=>(B[1]-B[0])-(A[1]-A[0])); const FR=free[0]; if(!FR||Math.abs(kx)*(FR[1]-FR[0])<44) continue; const mid=(FR[0]+FR[1])/2; const pr2=LAB.PROG&&LAB.PROG[f.prog];
+        const t=el('text',{x:sx(mid).toFixed(1),y:(sy(f.z+(f.h-T)/2)+3).toFixed(1),'text-anchor':'middle','font-size':9,'letter-spacing':'0.05em',fill:'#5F646B','font-family':'var(--font-b),sans-serif',stroke:'#fff','stroke-width':3,'paint-order':'stroke'},svg); t.textContent=q.below?'BASEMENT':((pr2&&pr2.name)||'FLOOR').toUpperCase(); }
     });
   }
   if(sec&&uMax>-1e8){ const {rows}=sectionCut(); const F0=F[0]; const zTop=F.length?F[F.length-1].z+F[F.length-1].h:0, zBot=B.length?Math.min(...B.map(f=>f.z))-0.8:-0.5;
@@ -453,14 +454,26 @@ function planPanelSync(){ const K=planPanel(); K.hidden=false; const sel=K.query
   const want=PLAN.lv.kind+':'+(PLAN.lv.kind==='site'?0:PLAN.lv.i); const sig=opts.map(o=>o[0]+o[1]).join('|'); if(sel.dataset.sig!==sig){ sel.innerHTML=opts.map(([v,l])=>`<option value="${v}">${l}</option>`).join(''); sel.dataset.sig=sig; } sel.value=want; if(sel.value!==want) sel.value='above:0';
   const f=planFloor(); K.querySelector('#pp-title').textContent=f?(f.below?'B'+f.bi:'L'+(f.i+1))+' plan':'Site plan'; K.querySelector('#pp-sub').textContent=f?`FFL ${sg(f.z)} · cut at +${(planCutZ(f)-f.z).toFixed(2)}`:'roofs from above'; }
 function planFrame(refit){ const f=planFloor(), o=LAB.orbit, S=LAB.S; if(f){ const R=Math.max(f.w||30,f.d||30)*0.62+22; if(refit) { o.dist=R/Math.tan(LAB.camera.fov*Math.PI/360); o.target.set(S.posX,planCutZ(f),-S.posY); } else o.target.y=planCutZ(f); } else if(refit){ o.target.set(S.posX,0,-S.posY); o.dist=Math.max(220,(S.height||100)*1.4); } SHEET.key=null; LAB.requestRender(); }
+
+/* core footprints of a floor, in its own axes: from the modeled core parts cut at mid-storey, else from closed openings in the
+   floor plate (a plate drawn around its core), else a square of the core size on the tower axis */
+function coreRectsOf(f){ const S=LAB.S, P=LAB.modelParts, R=LAB.uploadRaw; const key=[S.posX,S.posY,S.rotDeg,P&&P.rawVersion,R&&R.version].join('|'); if(f._cores&&f._cores.key===key) return f._cores.list;
+  let list=[];
+  const cut=sliceParts(f.z+Math.min(f.h*0.5,2)); if(cut&&cut.core.length){ for(const g of cut.core){ let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9; for(const lp of g.loops.concat(g.open)) for(const q of lp){ const l=LAB.toLocal(f,q[0],q[1]); a0=Math.min(a0,l.x); a1=Math.max(a1,l.x); b0=Math.min(b0,l.y); b1=Math.max(b1,l.y); } if(a1-a0>1.5&&b1-b0>1.5) list.push({x0:a0,x1:a1,y0:b0,y1:b1,src:'model'}); }
+    // walls of one core modeled as separate pieces: merge rectangles that touch
+    for(let again=true;again;){ again=false; for(let i=0;i<list.length&&!again;i++) for(let j=i+1;j<list.length;j++){ const A=list[i], B=list[j]; if(A.x0<=B.x1+0.5&&B.x0<=A.x1+0.5&&A.y0<=B.y1+0.5&&B.y0<=A.y1+0.5){ list[i]={x0:Math.min(A.x0,B.x0),x1:Math.max(A.x1,B.x1),y0:Math.min(A.y0,B.y0),y1:Math.max(A.y1,B.y1),src:'model'}; list.splice(j,1); again=true; break; } } } }
+  if(!list.length&&f.mask){ const loops=LAB.maskLoops(f); const outer=loops.filter(l=>l.outer).reduce((a,l)=>a+l.area,0); for(const lp of loops){ if(lp.outer||lp.area<9||lp.area>0.45*outer) continue; let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9; for(const p of lp.pts){ a0=Math.min(a0,p[0]); a1=Math.max(a1,p[0]); b0=Math.min(b0,p[1]); b1=Math.max(b1,p[1]); } list.push({x0:a0,x1:a1,y0:b0,y1:b1,src:'opening'}); } }
+  if(!list.length&&(f.core||0)>4){ const cl=LAB.toLocal(f,S.posX,S.posY), ch=f.core/2; list.push({x0:cl.x-ch,x1:cl.x+ch,y0:cl.y-ch,y1:cl.y+ch,src:'axis'}); }
+  f._cores={key,list}; return list; }
+const inCoreRect=(list,x,y,pad)=>list.find(r=>x>=r.x0-(pad||0)&&x<=r.x1+(pad||0)&&y>=r.y0-(pad||0)&&y<=r.y1+(pad||0));
 /* shared by the plan and the section: the plate's bounds in its own axes, the column grid, and the core layout */
 function plateBounds(f){ let bx0=1e9,bx1=-1e9,by0=1e9,by1=-1e9; for(const lp of LAB.maskLoops(f)) for(const p of lp.pts){ bx0=Math.min(bx0,p[0]); bx1=Math.max(bx1,p[0]); by0=Math.min(by0,p[1]); by1=Math.max(by1,p[1]); } return {bx0,bx1,by0,by1}; }
 function insideF(f,lx,ly){ const m=f.mask; if(!m) return false; const ix=Math.floor(lx-m.x0), iy=Math.floor(ly-m.y0); return ix>=0&&iy>=0&&ix<m.nx&&iy<m.ny&&!!m.cells[iy*m.nx+ix]&&lx<=f.w/2&&ly<=f.d/2; }
 /* perimeter columns on a grid of about 9 m, plus interior columns where the span from the core passes 12 m (indicative: the model has no structure) */
-function colsOf(f){ if(f._cols&&f._cols.key===LAB.S.posX+','+LAB.S.posY) return f._cols; const {bx0,bx1,by0,by1}=plateBounds(f); const gx=[], gy=[]; const nx=Math.max(1,Math.round((bx1-bx0-1.8)/9)), ny=Math.max(1,Math.round((by1-by0-1.8)/9)); for(let i=0;i<=nx;i++) gx.push(bx0+0.9+i*(bx1-bx0-1.8)/nx); for(let j=0;j<=ny;j++) gy.push(by0+0.9+j*(by1-by0-1.8)/ny);
-  const cl=LAB.toLocal(f,LAB.S.posX,LAB.S.posY), ch=(f.core||0)/2, cols=[];
-  for(const x of gx) for(const y of gy){ if(!insideF(f,x,y)) continue; const edge=[[1.9,0],[-1.9,0],[0,1.9],[0,-1.9]].some(([dx,dy])=>!insideF(f,x+dx,y+dy)); const dc=Math.max(Math.abs(x-cl.x)-ch,Math.abs(y-cl.y)-ch); if(!edge&&dc<12) continue; if(dc<1.2) continue; cols.push([x,y]); }
-  f._cols={key:LAB.S.posX+','+LAB.S.posY,gx,gy,cols,cs:f.below?0.9:0.8}; return f._cols; }
+function colsOf(f){ const ck=LAB.S.posX+','+LAB.S.posY+','+LAB.S.rotDeg; if(f._cols&&f._cols.key===ck) return f._cols; const {bx0,bx1,by0,by1}=plateBounds(f); const gx=[], gy=[]; const nx=Math.max(1,Math.round((bx1-bx0-1.8)/9)), ny=Math.max(1,Math.round((by1-by0-1.8)/9)); for(let i=0;i<=nx;i++) gx.push(bx0+0.9+i*(bx1-bx0-1.8)/nx); for(let j=0;j<=ny;j++) gy.push(by0+0.9+j*(by1-by0-1.8)/ny);
+  const CR=coreRectsOf(f), cols=[]; const dcore=(x,y)=>CR.length?Math.min(...CR.map(r=>Math.max(r.x0-x,x-r.x1,r.y0-y,y-r.y1))):1e9;
+  for(const x of gx) for(const y of gy){ if(!insideF(f,x,y)) continue; const edge=[[1.9,0],[-1.9,0],[0,1.9],[0,-1.9]].some(([dx,dy])=>!insideF(f,x+dx,y+dy)); const dc=dcore(x,y); if(!edge&&dc<12) continue; if(dc<1.2) continue; cols.push([x,y]); }
+  f._cols={key:ck,gx,gy,cols,cs:f.below?0.9:0.8}; return f._cols; }
 /* core as a room: walls, a lift bank along its west wall, a lobby, two stairs to the east */
 function coreLayout(x0,x1,y0,y1){ const T=0.3, cw=x1-x0, cd=y1-y0; const lob=Math.min(3.2,cw*0.22), nLift=Math.max(2,Math.min(8,Math.ceil(((LAB.floors||[]).length)/9))); const liftW=Math.min(2.6,Math.max(1.8,(cd-2*T)/Math.max(1,nLift)));
   const fits=cw>=liftW+lob+3.2&&cd>=5; return {T,cw,cd,lob,nLift,liftW,xl:x0+T,xs:x0+T+liftW+0.2+lob,fits}; }
@@ -512,7 +525,7 @@ function drawPlan(svg,W,H){ const f=planFloor(); const S=LAB.S, zc=planCutZ(f), 
   const CO=colsOf(f), gx=CO.gx, gy=CO.gy;
   if(!has('structure')){ const cs=CO.cs; for(const [x,y] of CO.cols) quadL(f,[[x-cs/2,y-cs/2],[x+cs/2,y-cs/2],[x+cs/2,y+cs/2],[x-cs/2,y+cs/2]],poche); }
   // core: walls, a bank of lifts on one side of a lobby, two stairs on the other, doors into the lobby
-  const coreRoom=(x0,x1,y0,y1)=>{ const R=(a,b,cc,d,at)=>quadL(f,[[a,cc],[b,cc],[b,d],[a,d]],at||poche); const LY=coreLayout(x0,x1,y0,y1), T=LY.T, cd=LY.cd, lob=LY.lob, nLift=LY.nLift, liftW=LY.liftW, xl=LY.xl, xs=LY.xs;
+  const coreRoom=(x0,x1,y0,y1)=>{ const R=(a,b,cc,d,at)=>quadL(f,[[a,cc],[b,cc],[b,d],[a,d]],at||poche); R(x0,x1,y0,y1,{fill:'#fff'}); const LY=coreLayout(x0,x1,y0,y1), T=LY.T, cd=LY.cd, lob=LY.lob, nLift=LY.nLift, liftW=LY.liftW, xl=LY.xl, xs=LY.xs;
     R(x0,x1,y0,y0+T); R(x0,x1,y1-T,y1); R(x0,x0+T,y0,y1); R(x1-T,x1,y0,y1);
     // a door into a core too small to plan
     if(!LY.fits){ R(x0+LY.cw/2-0.5,x0+LY.cw/2+0.5,y0-0.02,y0+T+0.02,{fill:'#fff'}); if(!tiny&&k>3){ const p=Lw(f,(x0+x1)/2,(y0+y1)/2); const t=el('text',{x:p[0].toFixed(1),y:(p[1]+3).toFixed(1),'text-anchor':'middle','font-size':9,fill:'#5F646B','font-family':'var(--font-m),monospace'},svg); t.textContent='CORE'; } return; }
@@ -531,7 +544,7 @@ function drawPlan(svg,W,H){ const f=planFloor(); const S=LAB.S, zc=planCutZ(f), 
       // door from the lobby, swing drawn
       const dy0=s===0?a+land*0.15:b-land*0.15-0.9; R(xs-0.02,xs+0.22,dy0,dy0+0.9,{fill:'#fff'}); if(!tiny){ const hinge=Lw(f,xs+0.2,dy0), leaf=Lw(f,xs+0.2+0.9,dy0), end=Lw(f,xs+0.2,dy0+0.9); const r=0.9*k; el('path',{d:`M${fmt(hinge)}L${fmt(leaf)}A${r.toFixed(1)} ${r.toFixed(1)} 0 0 ${s===0?0:1} ${fmt(end)}`,fill:'none',stroke:ink,'stroke-width':0.5},svg); } }
   }
-  if(!has('core')&&c>4) coreRoom(cl.x-ch,cl.x+ch,cl.y-ch,cl.y+ch);
+  if(!has('core')) for(const r of coreRectsOf(f)) coreRoom(r.x0,r.x1,r.y0,r.y1);
   // a modeled core: walls as modeled, or, if it is one solid, read as a room with walls and the core layout inside
   for(const g of cut.core){ if(g.loops.length>1) el('path',{d:worldPath(g.loops,true),'fill-rule':'evenodd',...poche},svg);
     else if(g.loops.length===1){ const lp=g.loops[0], loc=lp.map(q=>{ const l=LAB.toLocal(f,q[0],q[1]); return [l.x,l.y]; }); let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9,A=0; loc.forEach((q,i)=>{ a0=Math.min(a0,q[0]); a1=Math.max(a1,q[0]); b0=Math.min(b0,q[1]); b1=Math.max(b1,q[1]); const r2=loc[(i+1)%loc.length]; A+=q[0]*r2[1]-r2[0]*q[1]; });
@@ -555,7 +568,7 @@ function drawPlan(svg,W,H){ const f=planFloor(); const S=LAB.S, zc=planCutZ(f), 
     for(let j=0;j+1<gy.length;j++) dim([xd,gy[j]],[xd,gy[j+1]],-8,(gy[j+1]-gy[j]).toFixed(2)); dim([xo,by0],[xo,by1],-8,(by1-by0).toFixed(2));
   }
   // room tag on the deepest side of the core
-  if(!tiny){ const sides=[[1,0,bx1-(cl.x+ch)],[-1,0,(cl.x-ch)-bx0],[0,1,by1-(cl.y+ch)],[0,-1,(cl.y-ch)-by0]].sort((a,b)=>b[2]-a[2]); const sd=sides[0]; const tx=cl.x+sd[0]*(ch+sd[2]/2), ty=cl.y+sd[1]*(ch+sd[2]/2);
+  if(!tiny){ const CR0=coreRectsOf(f)[0]||{x0:cl.x,x1:cl.x,y0:cl.y,y1:cl.y}; const ccx=(CR0.x0+CR0.x1)/2, ccy=(CR0.y0+CR0.y1)/2, hx=(CR0.x1-CR0.x0)/2, hy=(CR0.y1-CR0.y0)/2; const sides=[[1,0,bx1-CR0.x1,hx],[-1,0,CR0.x0-bx0,hx],[0,1,by1-CR0.y1,hy],[0,-1,CR0.y0-by0,hy]].sort((a,b)=>b[2]-a[2]); const sd=sides[0]; const tx=ccx+sd[0]*(sd[3]+sd[2]/2), ty=ccy+sd[1]*(sd[3]+sd[2]/2);
     if(inside(tx,ty)){ let p=Lw(f,tx,ty); if(clip.kind==='v'){ const G=secGeom(), w=LAB.toWorld(f,tx,ty); const dd=(w.x-G.p0.x)*G.L.x+(w.y-G.p0.y)*G.L.y; if(Math.abs(dd)<3.5){ const sh=(dd>=0?1:-1)*(3.5-Math.abs(dd)); p=px(w.x+G.L.x*sh,w.y+G.L.y*sh); } } const gross=f.area||(f.mask?f.mask.cells.reduce((a,b)=>a+b,0):0); const pr=LAB.PROG&&LAB.PROG[f.prog]; const nm=below?'BASEMENT':((pr&&pr.name)||'FLOOR').toUpperCase(); const t1=el('text',{x:p[0].toFixed(1),y:(p[1]-2).toFixed(1),'text-anchor':'middle','font-size':11,'font-weight':600,'letter-spacing':'0.06em',fill:ink,'font-family':'var(--font-b),sans-serif',stroke:'#fff','stroke-width':3,'paint-order':'stroke'},svg); t1.textContent=nm;
       const t2=el('text',{x:p[0].toFixed(1),y:(p[1]+12).toFixed(1),'text-anchor':'middle','font-size':10,fill:'#5F646B','font-family':'var(--font-m),monospace',stroke:'#fff','stroke-width':3,'paint-order':'stroke'},svg); t2.textContent=`${Math.round(gross).toLocaleString()} m² gross`; } }
   // the section line, A–A: drag the line to move it, drag an end dot to turn it, click a bubble to flip, double-click it to open the section; Draw a cut sketches a new one
@@ -612,7 +625,7 @@ function drawKeyPlan(){ let K=document.getElementById('keyplan'); const vp=$('vi
   const G=secGeom(), S=LAB.S; let h='';
   const site=LAB.site&&LAB.site.site; if(site&&site.polygon&&site.polygon.length) h+=`<polygon points="${site.polygon.map(q=>X(q[0])+','+Y(q[1])).join(' ')}" fill="none" stroke="#9AA0A6" stroke-width="1" stroke-dasharray="4 3"/>`;
   const runsPoly=(f,fill,stroke,dash)=>{ const m=f.mask; if(!m) return ''; let s=''; for(let iy=0;iy<m.ny;iy++){ let ix=0; while(ix<m.nx){ if(!m.cells[iy*m.nx+ix]){ ix++; continue; } let j=ix; while(j+1<m.nx&&m.cells[iy*m.nx+j+1]) j++; const c=[[m.x0+ix,m.y0+iy],[m.x0+j+1,m.y0+iy],[m.x0+j+1,m.y0+iy+1],[m.x0+ix,m.y0+iy+1]].map(q=>LAB.toWorld(f,q[0],q[1])); s+=`<polygon points="${c.map(q=>X(q.x)+','+Y(q.y)).join(' ')}" fill="${fill}" stroke="${fill}" stroke-width="0.6"/>`; ix=j+1; } } return s; };
-  const B=belowSorted(), Fl=LAB.floors||[]; if(B.length) h+=`<g opacity=".55">${runsPoly(B[B.length-1],'#B9A27E')}</g>`; if(Fl.length) h+=runsPoly(Fl[0],'#5B6169'); const mid=Fl[Math.floor(Fl.length/2)]; if(mid&&mid!==Fl[0]) h+=`<g opacity=".35">${runsPoly(mid,'#2E3338')}</g>`;
+  const B=belowSorted(), Fl=LAB.floors||[]; if(B.length) h+=`<g opacity=".55">${runsPoly(B[B.length-1],'#B9A27E')}</g>`; if(Fl.length) h+=runsPoly(Fl[0],'#5B6169'); if(Fl.length) for(const r of coreRectsOf(Fl[0])){ const c=[[r.x0,r.y0],[r.x1,r.y0],[r.x1,r.y1],[r.x0,r.y1]].map(q=>LAB.toWorld(Fl[0],q[0],q[1])); h+=`<polygon points="${c.map(q=>X(q.x)+','+Y(q.y)).join(' ')}" fill="#fff" stroke="#1F2227" stroke-width="1.4"/><text x="${X((c[0].x+c[2].x)/2)}" y="${(+Y((c[0].y+c[2].y)/2)+3).toFixed(1)}" text-anchor="middle" font-size="8" fill="#1F2227">core</text>`; } const mid=Fl[Math.floor(Fl.length/2)]; if(mid&&mid!==Fl[0]) h+=`<g opacity=".35">${runsPoly(mid,'#2E3338')}</g>`;
   const R=F.E*1.6, a={x:G.p0.x-G.r.x*R,y:G.p0.y-G.r.y*R}, b={x:G.p0.x+G.r.x*R,y:G.p0.y+G.r.y*R}; const eL={x:G.p0.x-G.r.x*F.E*0.82,y:G.p0.y-G.r.y*F.E*0.82}, eR={x:G.p0.x+G.r.x*F.E*0.82,y:G.p0.y+G.r.y*F.E*0.82};
   h+=`<line x1="${X(a.x)}" y1="${Y(a.y)}" x2="${X(b.x)}" y2="${Y(b.y)}" stroke="#E8692B" stroke-width="1.6" stroke-dasharray="10 3 2 3"/>`;
   h+=`<line data-kpart="line" x1="${X(a.x)}" y1="${Y(a.y)}" x2="${X(b.x)}" y2="${Y(b.y)}" stroke="transparent" stroke-width="14" style="cursor:move"/>`;
@@ -629,6 +642,10 @@ const advGroup=new THREE.Group(), lodGroup=new THREE.Group(), dressGroup=new THR
 const mkMat=c=>new THREE.MeshLambertMaterial({color:c,side:THREE.DoubleSide});
 const MAT={tower:mkMat(0x9aa3ad),spandrel:mkMat(0x8f99a4),glass:mkMat(0x6e9cc4),shade:mkMat(0xd9a441),pv:mkMat(0x1f3a5f),green:mkMat(0x5e8f5a)};
 function applyColors(){ const v=(k,d)=>cssVar(k)||d; MAT.tower.color.set(v('--mass','#9aa3ad')); MAT.spandrel.color.set(v('--spandrel','#8f99a4')); MAT.glass.color.set(v('--glass','#6e9cc4')); MAT.shade.color.set(v('--shade-dev','#d9a441')); MAT.pv.color.set(v('--pv','#1f3a5f')); MAT.green.color.set(v('--green','#5e8f5a')); }
+/* the part colours of the model check, so the imported model reads the same after import */
+const PART_MATS={};
+function partMat(cat){ if(PART_MATS[cat]) return PART_MATS[cat]; const C=(LAB.parts&&LAB.parts.CATS)||[]; const row=C.find(c=>c[0]===cat); const col=row?row[2]:'#A9B2BC';
+  const m=new THREE.MeshLambertMaterial({color:new THREE.Color(col),side:THREE.DoubleSide}); if(cat==='window'){ m.transparent=true; m.opacity=0.6; m.depthWrite=false; } return PART_MATS[cat]=m; }
 function useRaw(){ return !!LAB.uploadRaw&&SW.show.raw&&LAB.S.typology==='upload'; }
 function meshArea(list){ let A=0; for(const m of list) for(let i=0;i<m.f.length;i+=3){ const a=m.f[i]*3,b=m.f[i+1]*3,c=m.f[i+2]*3; const ux=m.v[b]-m.v[a],uy=m.v[b+1]-m.v[a+1],uz=m.v[b+2]-m.v[a+2],vx=m.v[c]-m.v[a],vy=m.v[c+1]-m.v[a+1],vz=m.v[c+2]-m.v[a+2]; A+=0.5*Math.hypot(uy*vz-uz*vy,uz*vx-ux*vz,ux*vy-uy*vx); } return A; }
 function clearGroup(g){ while(g.children.length){ const o=g.children.pop(); if(o.geometry) o.geometry.dispose(); } }
@@ -675,13 +692,17 @@ function applyModelWWR(w){ if(!SW||!w) return; for(const z of SW.zones){ const f
 function markStaleAll(){ if(sunResult) stale.sun=true; if(windResult) stale.wind=true; showStale(); }
 function buildAdv(){
   const R=LAB.uploadRaw; if(!R){ advGroup.visible=false; return; }
-  if(advVersion!==R.version){
+  const MP=LAB.modelParts, byPart=!!(MP&&MP.pieces&&MP.rawVersion===R.version); const key=R.version+(byPart?':parts':'');
+  if(advVersion!==key){
     clearGroup(advGroup);
-    for(const [list,cat] of [[R.massing,'tower'],[R.shading,'shade'],[R.pv,'pv']]) for(const m of list){
-      let g=new THREE.BufferGeometry(); const pos=new Float32Array(m.v.length); for(let i=0;i<m.v.length;i+=3){ pos[i]=m.v[i]-R.cx; pos[i+1]=m.v[i+2]-R.minz; pos[i+2]=-(m.v[i+1]-R.cy); }
-      g.setAttribute('position',new THREE.BufferAttribute(pos,3)); g.setIndex(m.f); g=g.toNonIndexed(); g.computeVertexNormals();
-      const mesh=new THREE.Mesh(g,MAT[cat]); mesh.userData.cat=cat; mesh.castShadow=true; mesh.receiveShadow=true; advGroup.add(mesh); }
-    advVersion=R.version;
+    const toMesh=(v,f,mat,cat,part)=>{ let g=new THREE.BufferGeometry(); const pos=new Float32Array(v.length); for(let i=0;i<v.length;i+=3){ pos[i]=v[i]-R.cx; pos[i+1]=v[i+2]-R.minz; pos[i+2]=-(v[i+1]-R.cy); }
+      g.setAttribute('position',new THREE.BufferAttribute(pos,3)); g.setIndex(f); g=g.toNonIndexed(); g.computeVertexNormals(); const mesh=new THREE.Mesh(g,mat); mesh.userData.cat=cat; if(part) mesh.userData.part=part; mesh.castShadow=true; mesh.receiveShadow=true; advGroup.add(mesh); };
+    if(byPart){ // each checked part in its preview colour; the studies still read it all as the tower
+      const groups=new Map(); for(const p of MP.pieces){ let g=groups.get(p.v); if(!g){ g={}; groups.set(p.v,g); } (g[p.cat]||(g[p.cat]=[])).push(...p.f); }
+      for(const [v,g] of groups) for(const cat in g){ if(cat==='other') continue; toMesh(v,g[cat],partMat(cat),'tower',cat); } }
+    else for(const m of R.massing) toMesh(m.v,m.f,MAT.tower,'tower');
+    for(const [list,cat] of [[R.shading,'shade'],[R.pv,'pv']]) for(const m of list) toMesh(m.v,m.f,MAT[cat],cat);
+    advVersion=key;
   }
   const S=LAB.S; advGroup.position.set(S.posX,-((LAB.upload&&LAB.upload.grade)||0),-S.posY); advGroup.rotation.y=S.rotDeg*Math.PI/180;
 }
