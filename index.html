@@ -68,6 +68,7 @@ body[data-mode="basic"] .adv{display:none!important}
 body[data-mode="advanced"] .basic-only{display:none!important}
 .lb-adv{display:none} body[data-mode="advanced"] .lb-adv{display:inline} body[data-mode="advanced"] .lb-basic{display:none}
 .ptitle{margin:0 0 4px;font:600 17px/1.2 var(--font-b);letter-spacing:-.01em}
+.part-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin:22px 0 8px;padding:7px 12px;border-radius:8px;background:color-mix(in srgb,var(--tabc,var(--ink)) 10%,var(--panel));border-left:4px solid var(--tabc,var(--ink))}.part-head b{font:600 14px/1.2 var(--font-b);color:var(--tabc,var(--ink))}.part-head span{font-size:12px;color:var(--muted)}.part-head.part-out{background:var(--panel2);border-left-color:var(--muted)}.part-head.part-out b{color:var(--ink)}
 .plead{margin:0 0 14px;color:var(--muted);font-size:12.5px;line-height:1.5}
 h2{margin:22px 0 8px;font:600 11px/1 var(--font-b);letter-spacing:.09em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:10px}
 h2::after{content:"";flex:1;height:1px;background:var(--line2)}
@@ -595,8 +596,8 @@ body[data-tone] #run-active{background:var(--tone,var(--accent));border-color:va
       <div id="fig-sheet" class="fig-sheet" hidden></div>
       <p class="banner" id="mode-banner"></p>
       <div id="plan-home"><div class="adv" id="plan-block" hidden>
-        <h2>Floor plan · sun, daylight and air inside</h2>
-        <div class="sel-row"><label class="lvl">Level <input type="number" id="plan-level" min="1" step="1" aria-label="Plan level"></label><button class="btn small" id="plan-up" type="button" aria-label="Level up">▲</button><button class="btn small" id="plan-down" type="button" aria-label="Level down">▼</button><span class="sel-info">Sun follows the daylight tab's date and hour, air the ventilation tab's wind case. Edges are coloured by face, solid where the zone is operable.</span></div>
+        <h2 id="plan-title">Floor plan · sun and daylight inside</h2>
+        <div class="sel-row"><label class="lvl">Level <input type="number" id="plan-level" min="1" step="1" aria-label="Plan level"></label><button class="btn small" id="plan-up" type="button" aria-label="Level up">▲</button><button class="btn small" id="plan-down" type="button" aria-label="Level down">▼</button><span class="sel-info" id="plan-info"></span></div>
         <div class="chips" id="plan-layers"></div>
         <div class="plan-wrap" id="plan"></div>
         <div class="legend" id="plan-legend"></div>
