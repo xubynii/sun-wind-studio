@@ -1,2 +1,4 @@
 _part*.js
 *.tmp
+__pycache__/
+*.pyc

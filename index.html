@@ -135,6 +135,15 @@ td{padding:5px 6px;border-bottom:1px solid var(--line2);vertical-align:top}
 td.num,th.num{text-align:right;font-family:var(--font-m);font-variant-numeric:tabular-nums;white-space:nowrap}
 td.num em{font-style:normal;color:var(--muted);font-size:10.5px}
 td .dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.rlink{margin-top:12px;border-top:1px solid var(--line2);padding-top:8px}
+.rlink summary{cursor:pointer;font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px}
+.rdot{width:8px;height:8px;border-radius:50%;background:var(--line);flex:none}
+.rdot[data-state="ok"]{background:#3C9A5F}.rdot[data-state="sync"]{background:#D9A441}.rdot[data-state="bad"]{background:#C8553D}
+.rlink-lead{font-size:11.5px;color:var(--muted);line-height:1.4;margin:6px 0}
+.rlink-lead code{font-size:11px}
+.rlink-row{display:flex;align-items:center;gap:8px;font-size:12px}
+.rlink-row input{width:72px;padding:4px 6px;font:inherit;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
+#rlink-status.bad{color:#C8553D}
 td.why{color:var(--muted);font-size:11.5px;line-height:1.35}
 .tbl-wrap{overflow-x:auto}
 .warn{margin:10px 0 0;padding:8px 10px;background:var(--warn-bg);color:var(--warn);border-radius:6px;font-size:12px;line-height:1.4}
@@ -385,6 +394,12 @@ body[data-tone] #run-active{background:var(--tone,var(--accent));border-color:va
         <div class="drop" id="drop">or drop the file here · metres, z up · closed volumes for a massing</div>
         <p class="io-status" id="io-status">Loading rhino3dm…</p>
         <button class="btn small" id="import-roles" type="button" hidden>Change layer roles</button>
+        <details class="rlink" id="rlink"><summary><span class="rdot" id="rlink-dot" data-state="off" aria-hidden="true"></span>Live link to Rhino</summary>
+          <p class="rlink-lead">In Rhino, run <b>Sun &amp; Wind Link</b> (<code>rhino/sw_link.py</code>). It sets up the layers the studies read, checks the model and serves it here; every edit in Rhino re-imports within a second or two.</p>
+          <div class="rlink-row"><label for="rlink-port">Port</label><input id="rlink-port" type="number" min="1024" max="65535" value="8797"><button class="btn small" id="rlink-go" type="button">Connect</button></div>
+          <div class="checks one"><label class="check" for="rlink-keep"><input type="checkbox" id="rlink-keep" checked><span>Keep my placement on the site between updates</span></label></div>
+          <p class="io-status" id="rlink-status" aria-live="polite">Not connected.</p>
+        </details>
         <div id="import-dialog" hidden>
           <h3>Layers found</h3>
           <div class="tbl-wrap"><table id="import-layers"></table></div>
@@ -631,6 +646,7 @@ body[data-tone] #run-active{background:var(--tone,var(--accent));border-color:va
 <script src="report.js"></script>
 <script src="io.js"></script>
 <script src="parts.js"></script>
+<script src="link.js"></script>
 <script>
   LAB.boot(); LAB.climate.init(); LAB.sim.init(); LAB.energy.init(); LAB.report.init(); LAB.io.init(); LAB.tabs.init(); LAB.help.apply(document);
 </script>

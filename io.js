@@ -28,7 +28,7 @@ function parseJSON(text){
   const j=JSON.parse(text);
   if(j&&Array.isArray(j.meshes)&&j.meta) return j; // the tool's own site format
   const arr=Array.isArray(j)?j:(j.meshes||[]);
-  return arr.filter(m=>m.v&&m.f).map(m=>{ const V=Array.isArray(m.v[0])?m.v.flat():m.v, F=Array.isArray(m.f[0])?m.f.flat():m.f; const mm=meshFromArrays(V.map(Number),F.map(Number),'existing'); mm.layerName=m.layer||'model'; mm.kind='mesh'; return mm; });
+  return arr.filter(m=>m.v&&m.f).map(m=>{ const V=Array.isArray(m.v[0])?m.v.flat():m.v, F=Array.isArray(m.f[0])?m.f.flat():m.f; const mm=meshFromArrays(V.map(Number),F.map(Number),'existing'); mm.layerName=m.layer||'model'; mm.kind=m.kind||'mesh'; if(m.role) mm.role=m.role; if(m.part) mm.part=m.part; return mm; });
 }
 async function parse3DM(buf){
   const r=await rhino(); if(!r) throw new Error('rhino3dm could not load in this viewer; export the model as .obj or .json instead.');
@@ -36,11 +36,13 @@ async function parse3DM(buf){
   let scale=1; try{ const u=file.settings().modelUnitSystem; const map={2:0.001,3:0.01,4:1,5:1000,8:0.0254,9:0.3048,10:1609.34}; if(u in map) scale=map[u]; }catch(e){}
   const out=[]; const objs=file.objects(); const layers=file.layers(); const skipped={};
   const layerPath=(li)=>{ try{ let L=layers.get(li); let name=L.name; let guard=0; while(L&&L.parentLayerId&&guard++<8){ let par=null; for(let j=0;j<layers.count;j++){ const c=layers.get(j); if(c.id===L.parentLayerId){ par=c; break; } } if(!par) break; name=par.name+'::'+name; L=par; } return name; }catch(e){ return 'layer '+li; } };
+  const layerTarget=(li)=>{ try{ let L=layers.get(li), g=0; while(L&&g++<9){ const k=L.getUserString?L.getUserString('sw.target'):null; if(k&&SW_KEYS[k]) return swKey(k); if(!L.parentLayerId) break; let par=null; for(let j=0;j<layers.count;j++){ const c=layers.get(j); if(c.id===L.parentLayerId){ par=c; break; } } L=par; } }catch(e){} return null; };
+  const tgt={};
   const meshOf=(mesh,layer,kind)=>{ if(!mesh) return false; const V=[], F=[]; const vs=mesh.vertices(), fs=mesh.faces();
     for(let i=0;i<vs.count;i++){ const p=vs.get(i); V.push(p[0]*scale,p[1]*scale,p[2]*scale); }
     for(let i=0;i<fs.count;i++){ const f=fs.get(i); F.push(f[0],f[1],f[2]); if(f[2]!==f[3]) F.push(f[0],f[2],f[3]); }
     if(!F.length) return false; const m=meshFromArrays(V,F,'existing'); m.layerName=layer; m.kind=kind; out.push(m); return true; };
-  for(let i=0;i<objs.count;i++){ const o=objs.get(i); const g=o.geometry(); if(!g) continue; let layer='(default)'; try{ layer=layerPath(o.attributes().layerIndex); }catch(e){}
+  for(let i=0;i<objs.count;i++){ const o=objs.get(i); const g=o.geometry(); if(!g) continue; let layer='(default)'; try{ const li=o.attributes().layerIndex; layer=layerPath(li); if(!(layer in tgt)) tgt[layer]=layerTarget(li)||swTarget(layer); }catch(e){}
     try{
       let ok=false, kind='other';
       if(g instanceof r.Mesh){ kind='mesh'; ok=meshOf(g,layer,kind); }
@@ -51,12 +53,22 @@ async function parse3DM(buf){
     }catch(e){ console.warn('skip object',e); }
   }
   if(!out.length) throw new Error('The .3dm holds no meshes, extrusions or polysurfaces with render meshes. In Rhino, view the model in Rendered or Shaded mode once (so render meshes are stored), then save again.');
+  for(const m of out){ const t=tgt[m.layerName]; if(t){ m.role=t.role; if(t.part) m.part=t.part; } }
   out.skipped=skipped; return out;
 }
 
 /* ---------- import dialog: layers → massing / shading / pv / context / ignore ---------- */
 let pending=null; let siteMode=false; const ID=k=>siteMode?({status:'site-io-status',layers:'site-import-layers',dialog:'site-import-dialog',replace:'c-site-replace',name:'site-file-name'})[k]:({status:'io-status',layers:'import-layers',dialog:'import-dialog',replace:'c-import-replace',name:'file-name'})[k];
+/* Sun & Wind Link (the Rhino plugin in rhino/) sets up these layers and sends each object's role and part outright;
+   a plain .3dm saved with the same layers (or with layers the plugin mapped, stored as the layer user text sw.target) reads the same way. */
+const SW_KEYS={tower:['massing',null],floor:['massing','floor'],ground:['massing','ground'],facade:['massing','facade'],window:['massing','window'],roof:['massing','roof'],ceiling:['massing','ceiling'],structure:['massing','structure'],core:['massing','core'],stair:['massing','stair'],mass:['massing','mass'],shading:['shading',null],pv:['pv',null],context:['context',null],terrain:['terrain',null],ignore:['ignore',null]};
+const SW_ROOTS={'sw tower':'tower','sw shading':'shading','sw pv':'pv','sw context':'context','sw terrain':'terrain','sw ignore':'ignore'};
+const SW_LEAVES={'floor plates':'floor','ground floor':'ground','facade':'facade','façade':'facade','windows':'window','roof':'roof','ceilings':'ceiling','structure':'structure','core':'core','stairs':'stair','massing volume':'mass'};
+function swKey(k){ const t=SW_KEYS[k]; return t?{role:t[0],part:t[1]}:null; }
+function swTarget(path){ const seg=String(path||'').split('::').map(x=>x.trim().toLowerCase()); const root=SW_ROOTS[seg[0]]; if(!root) return null;
+  if(root==='tower') for(let i=seg.length-1;i>0;i--){ if(SW_LEAVES[seg[i]]) return swKey(SW_LEAVES[seg[i]]); } return swKey(root); }
 function guessRole(name){
+  const sw=swTarget(name); if(sw) return sw.role;
   if(/topo|terrain|dem\b|contour|grade|landform|ground surface/i.test(name)) return 'terrain';
   if(/pv|photovolt|solar panel|bipv|collector/i.test(name)) return 'pv';
   if(/shad|fin|louv|brise|overhang|canop|screen|sunbreak|balcon|awning/i.test(name)) return 'shading';
@@ -67,16 +79,17 @@ const SITE_ROLES=[['context','site context · buildings, plazas, streets'],['ter
 const ROLES=[['massing','tower massing'],['shading','shading device (Design development)'],['pv','PV surface (Design development)'],['context','site context'],['terrain','terrain · ground surface'],['ignore','ignore']];
 function showImportDialog(meshes,name){
   const groups={}; for(const m of meshes){ const k=m.layerName||'model'; const g=groups[k]||(groups[k]={n:0,kinds:{},top:-1e9}); g.n++; g.kinds[m.kind||'mesh']=(g.kinds[m.kind||'mesh']||0)+1; g.top=Math.max(g.top,m.top); }
-  pending={meshes,name,groups};
+  pending={meshes,name,groups,live:!!meshes.live,after:meshes.after||null};
   const names=Object.keys(groups).sort();
-  const roleList=siteMode?SITE_ROLES:ROLES; const guess=k=>{ const r=guessRole(k); return siteMode?(r==='terrain'?'terrain':'context'):r; };
+  const explicit={}; for(const m of meshes) if(m.role&&!(m.layerName in explicit)) explicit[m.layerName||'model']=m.role;
+  const roleList=siteMode?SITE_ROLES:ROLES; const guess=k=>{ const r=explicit[k]||guessRole(k); return siteMode?(r==='terrain'?'terrain':(r==='ignore'?'ignore':'context')):r; };
   $(ID('layers')).innerHTML=`<thead><tr><th>Layer</th><th class="num">Objects</th><th class="num">Top m</th><th>Use as</th></tr></thead><tbody>${names.map(k=>{ const g=groups[k]; const role=guess(k); return `<tr><td>${k}<br><span class="why">${Object.entries(g.kinds).map(([t,c])=>t+' ×'+c).join(', ')}</span></td><td class="num">${g.n}</td><td class="num">${g.top.toFixed(0)}</td><td><select data-layer="${k.replace(/"/g,'&quot;')}">${roleList.map(([v,l])=>`<option value="${v}"${role===v?' selected':''}>${l}</option>`).join('')}</select></td></tr>`; }).join('')}</tbody>`;
   const sk=meshes.skipped?Object.entries(meshes.skipped):[];
   status(`${name}: ${meshes.length} objects on ${names.length} layer${names.length>1?'s':''}${sk.length?'; skipped '+sk.map(([k,c])=>c+' '+k.split('|')[1]+' on '+k.split('|')[0]).join(', '):''}. Choose what each layer becomes, then Import.`);
   $(ID('replace')).checked=siteMode;
   /* a model file goes straight to the model check: the layers take their guessed roles and the preview opens;
      the role table stays one click away (Change layer roles) for a re-import. Only a file with no massing layer stops here. */
-  if(!siteMode&&names.some(k=>guess(k)==='massing')){ $('import-apply').textContent='Re-import'; $('import-note').hidden=false; applyImport(); return; }
+  if(!siteMode&&(pending.live||names.some(k=>guess(k)==='massing'))){ $('import-apply').textContent='Re-import'; $('import-note').hidden=false; applyImport(); return; }
   if(!siteMode){ $('import-apply').textContent='Import'; $('import-note').hidden=true; }
   $(ID('dialog')).hidden=false;
 }
@@ -90,19 +103,21 @@ function applyImport(){
   const inBase=pending.inBase!=null?pending.inBase:(Math.hypot(cx-origin[0],cy-origin[1])<400&&Math.hypot(origin[0],origin[1])>10); pending.inBase=inBase;
   if(inBase&&!pending.shifted){ pending.shifted=true; for(const m of all) for(let i=0;i<m.v.length;i+=3){ m.v[i]-=origin[0]; m.v[i+1]-=origin[1]; } }
   const msg=[];
+  if(pending.live&&LAB.site&&LAB.site.meshes&&LAB.site.meshes.some(m=>m.fromLink)){ LAB.site.meshes=LAB.site.meshes.filter(m=>!m.fromLink); if(!ctx.length) LAB.buildSite(); }
+  if(pending.live) for(const m of ctx) m.fromLink=true;
   if(ctx.length){ if($(ID('replace')).checked||!LAB.site){ applySite(ctx,pending.name); } else { levelTerrain(ctx); for(const m of ctx){ if(LAB.site.meshes.includes(m)) continue; if(!m.isTerrain) m.layer=/herit/i.test(m.layerName||'')?'heritage':'existing'; LAB.site.meshes.push(m); } LAB.buildSite(); } msg.push(ctx.length+' context objects'+(terrain.length?' including '+terrain.length+' terrain surface'+(terrain.length>1?'s':'')+' (ground at the tower set to 0 m; the rain study will route run-off over it)':'')); }
   if(massing.length){
     const U=voxelize(massing); U.grade=U.minz<-0.3?Math.min(U.top-2.4,-U.minz):0; LAB.upload=U; const S=LAB.S; S.typology='upload'; S.height=Math.round(U.top-U.grade); S.step={mode:'none'}; S.overrides={}; S.voids=[];
     if(LAB.site&&LAB.site.site&&Math.hypot(U.cx,U.cy)<200){ S.posX=Math.round(U.cx); S.posY=Math.round(U.cy); } else { S.posX=0; S.posY=0; }
     S.rotDeg=0;
-    LAB.uploadRaw={massing,shading,pv,cx:U.cx,cy:U.cy,minz:U.minz,name:pending.name,inBase,version:(LAB.uploadRaw?LAB.uploadRaw.version:0)+1};
+    LAB.uploadRaw={massing,shading,pv,cx:U.cx,cy:U.cy,minz:U.minz,name:pending.name,inBase,fromLink:!!pending.live,version:(LAB.uploadRaw?LAB.uploadRaw.version:0)+1};
     msg.push(`massing from ${massing.length} objects: ${(U.top-U.grade).toFixed(0)} m above ground${U.grade>0?' and '+U.grade.toFixed(1)+' m below (model z under 0 is treated as underground)':''}, footprint about ${U.footprint.toLocaleString()} m²; ${LAB.uploadSummary()}`);
     if(shading.length) msg.push(shading.length+' shading objects'); if(pv.length) msg.push(pv.length+' PV objects');
-  } else if(shading.length||pv.length){ status('Shading and PV layers need a massing layer in the same file to attach to. Choose a massing layer and import again.',true); return; }
-  const impName=pending.name; LAB.update(); $(ID('dialog')).hidden=true; status(`Imported ${pending.name}: ${msg.join('; ')||'nothing selected'}.${inBase?' Coordinates were shifted from the base model onto the site centre.':''}${(shading.length||pv.length)?' Switch to Design development to study the modeled devices.':''}`);
+  } else if(shading.length||pv.length){ status('Shading and PV layers need a massing layer in the same file to attach to. Choose a massing layer and import again.',true); if(pending.after) pending.after(false); return; }
+  const impName=pending.name, live=pending.live, after=pending.after; LAB.update(); $(ID('dialog')).hidden=true; status(`Imported ${pending.name}: ${msg.join('; ')||'nothing selected'}.${inBase?' Coordinates were shifted from the base model onto the site centre.':''}${(shading.length||pv.length)?' Switch to Design development to study the modeled devices.':''}`);
   if(siteMode) pending=null; else { $('import-roles').hidden=false; }
   if(LAB.sim&&LAB.sim.afterImport) LAB.sim.afterImport();
-  if(massing.length&&LAB.parts) setTimeout(()=>LAB.parts.open(massing,impName),60);
+  if(massing.length&&LAB.parts) setTimeout(()=>{ LAB.parts.open(massing,impName,{auto:live}); if(after) after(true); },60); else if(after) after(!!massing.length);
 }
 
 /* ---------- uploaded massing → per-floor masks ---------- */
@@ -260,7 +275,7 @@ function applySite(meshes,name){
   LAB.buildSite(); LAB.update(); status(`Site replaced by ${name}: ${meshes.length||meshes.meshes.length} meshes. Restore the Vancouver site any time.`);
 }
 
-LAB.io={splitPieces,detectLevels,platesToLevels,voxelize,parseOBJ,parseJSON,parse3DM,applySite,showImportDialog,applyImport,status,init(){
+LAB.io={importLive(meshes,name){ siteMode=false; const fn=$(ID('name')); if(fn) fn.textContent=name; for(const m of meshes){ if(!m.layerName) m.layerName='model'; if(!m.kind) m.kind='mesh'; } showImportDialog(meshes,name); },swTarget,splitPieces,handleFile,detectLevels,platesToLevels,voxelize,parseOBJ,parseJSON,parse3DM,applySite,showImportDialog,applyImport,status,init(){
   $('file-in').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(f) handleFile(f); e.target.value=''; });
   $('import-apply').addEventListener('click',applyImport); $('import-roles').addEventListener('click',()=>{ if(!pending){ status('Choose the file again to change its layer roles.'); return; } siteMode=false; $('import-dialog').hidden=false; }); $('import-cancel').addEventListener('click',()=>{ pending=null; $('import-dialog').hidden=true; status('Import cancelled.'); });
   // the Site tab takes a site model the same way; every layer becomes context or terrain

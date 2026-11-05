@@ -193,12 +193,17 @@ function apply(){ const S=state; const ok=k=>S.confirmed[k]!==false&&S.by[k]&&S.
   close(); LAB.update(); if(io.status) io.status(`Model parts confirmed: ${['floor','core','window','facade','structure','stair'].filter(k=>S.by[k].length).map(k=>S.by[k].length+' '+NAME[k].toLowerCase()).join(', ')}; ground at model z ${S.groundZ} m set on the site ground, ${LAB.floors?LAB.floors.length:0} floors above it${placed&&placed.kept?'; kept where the file places it on the site':(placed?`; turned ${placed.rot}° to run parallel to the parcel${placed.moved?' and moved onto it':''}`:'')}.`);
   if(LAB.sim&&LAB.sim.afterImport) LAB.sim.afterImport(); }
 /* ---------- entry ---------- */
-function open(massing,name){ if(!massing||!massing.length) return; const pieces=LAB.io.splitPieces(massing); let bx0=1e9,bx1=-1e9,by0=1e9,by1=-1e9; for(const m of massing) for(let i=0;i<m.v.length;i+=3){ const x=m.v[i],y=m.v[i+1]; if(x<bx0)bx0=x; if(x>bx1)bx1=x; if(y<by0)by0=y; if(y>by1)by1=y; } const C={cx:(bx0+bx1)/2,cy:(by0+by1)/2}; const inf=pieces.map(p=>info(p,C));
+function open(massing,name,opts){ opts=opts||{}; if(!massing||!massing.length) return; const pieces=LAB.io.splitPieces(massing); let bx0=1e9,bx1=-1e9,by0=1e9,by1=-1e9; for(const m of massing) for(let i=0;i<m.v.length;i+=3){ const x=m.v[i],y=m.v[i+1]; if(x<bx0)bx0=x; if(x>bx1)bx1=x; if(y<by0)by0=y; if(y>by1)by1=y; } const C={cx:(bx0+bx1)/2,cy:(by0+by1)/2}; const inf=pieces.map(p=>info(p,C));
   let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9,z0=1e9,z1=-1e9; for(const I of inf){ x0=Math.min(x0,I.x0); x1=Math.max(x1,I.x1); y0=Math.min(y0,I.y0); y1=Math.max(y1,I.y1); z0=Math.min(z0,I.z0); z1=Math.max(z1,I.z1); }
   const U=LAB.upload; const foot=U&&U.footprint?U.footprint:(x1-x0)*(y1-y0)*0.6;
   const byLayer={}; pieces.forEach((p,i)=>{ const L=p.layerName||'model'; (byLayer[L]=byLayer[L]||[]).push(i); });
   state={name:name||'the model',pieces,info:inf,all:massing,byLayer,layerChoice:{},confirmed:{},ctx:{top:z1,minz:z0,foot:Math.max(50,foot),cx:(x0+x1)/2,cy:(y0+y1)/2,dx:x1-x0,dy:y1-y0},groundZ:null,showLayer:null,hideLayer:{},cur:null,fix:null,ghost:true,framed:false,sel:new Set(),pieceChoice:{}};
-  classify(); render(); highlight(); }
+  /* parts named by the Rhino layers (Sun & Wind Link or a mapped .3dm) set the layer choice; a ground-floor layer sets the ground level */
+  for(const m of massing){ const L=m.layerName||'model'; if(m.part&&CATS.some(c=>c[0]===m.part)&&!(L in state.layerChoice)) state.layerChoice[L]=m.part; }
+  classify();
+  if(state.by.ground&&state.by.ground.length){ state.groundZ=+Math.min(...state.by.ground.map(i=>state.info[i].z1)).toFixed(2); state.confirmed.ground=true; summarise(); }
+  if(opts.auto){ apply(); return; }
+  render(); highlight(); }
 function reopen(){ if(state){ render(); highlight(); return true; } return false; }
 LAB.parts={open,reopen,close,apply,CATS,get state(){return state;}};
 })();
