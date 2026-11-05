@@ -73,6 +73,9 @@ TARGETS = [
     ('ignore',    'Ignore: never send',         'ignore',  None,        None,                        None),
 ]
 T = dict((t[0], t) for t in TARGETS)
+SHORT = {'tower': 'Tower (auto)', 'floor': 'Floor plates', 'ground': 'Ground floor', 'facade': u'Façade', 'window': 'Windows',
+         'roof': 'Roof', 'ceiling': 'Ceilings', 'structure': 'Structure', 'core': 'Core', 'stair': 'Stairs', 'mass': 'Massing',
+         'shading': 'Shading', 'pv': 'PV', 'context': 'Context', 'terrain': 'Terrain', 'ignore': 'Ignore'}
 KEYS = [t[0] for t in TARGETS]
 STD_PATHS = dict((t[4].lower(), t[0]) for t in TARGETS if t[4])
 
@@ -365,7 +368,8 @@ class Model(object):
 
     # --- the check
     def check(self, c):
-        """[(level, text, [ids], fix or None)] - level is 'error', 'warn', 'info' or 'ok'."""
+        """[(level, short text, [ids], fix or None, tip)] - level is 'error', 'warn', 'info' or 'ok'.
+        The text is one short line for the list; the tip explains it when the line is selected."""
         out = []
         items = c['items']
         by = {}
@@ -373,26 +377,25 @@ class Model(object):
             by.setdefault(it['key'], []).append(it)
         tower = [it for it in items if T[it['key']][2] == 'massing']
         ids = lambda lst: [it['id'] for it in lst]
+        plural = lambda n, w: '%d %s%s' % (n, w, '' if n == 1 else 's')
 
         if abs(c['scale'] - 1.0) > 1e-9:
-            out.append(('info', 'Model units are %s; everything is sent in metres (x %g).' % (c['units'], c['scale']), [], None))
+            out.append(('info', 'Units: %s, sent as metres' % c['units'].lower(), [], None,
+                        'Everything is scaled by %g on the way out. Nothing changes in Rhino.' % c['scale']))
         if not tower:
-            out.append(('error', 'Nothing is on the tower layers. Put the tower on SW Tower (or map your layers to a Tower target): every study needs a massing.', [], None))
+            out.append(('error', 'No tower', [], None,
+                        'Put the tower on SW Tower, or set one of your layers to a tower part. Every study needs a massing.'))
         if (by.get('shading') or by.get('pv')) and not tower:
-            out.append(('error', 'Shading and PV objects need a tower in the same model to attach to.', ids(by.get('shading', []) + by.get('pv', [])), None))
+            out.append(('error', 'Shading and PV need a tower', ids(by.get('shading', []) + by.get('pv', [])), None,
+                        'Devices and panels attach to the tower in the same model.'))
         if c['unmapped']:
             names = sorted(c['unmapped'].keys())
-            n = sum(len(v) for v in c['unmapped'].values())
             allids = [i for k in names for i in c['unmapped'][k]]
-            out.append(('warn', '%d visible object%s on %d unmapped layer%s %s not sent: %s%s. Map the layers or choose Ignore.' % (
-                n, 's' if n != 1 else '', len(names), 's' if len(names) != 1 else '', 'are' if n != 1 else 'is',
-                ', '.join(names[:5]), ' ...' if len(names) > 5 else ''), allids, None))
+            out.append(('warn', 'Not sent: %s%s' % (', '.join(names[:3]), ' +%d' % (len(names) - 3) if len(names) > 3 else ''), allids, None,
+                        '%s on unmapped layers. Pick what each layer is in Layers, or set it to Ignore.' % plural(len(allids), 'object')))
         if c['skipped']:
-            kinds = {}
-            for i, p, k in c['skipped']:
-                kinds[k] = kinds.get(k, 0) + 1
-            out.append(('info', 'Skipped on sent layers (only solids, surfaces, meshes, SubDs and blocks are sent): %s.' % (
-                ', '.join('%d %s' % (v, k) for k, v in sorted(kinds.items()))), [s[0] for s in c['skipped']], None))
+            out.append(('info', 'Skipped: %s' % plural(len(c['skipped']), 'curve or annotation'), [s[0] for s in c['skipped']], None,
+                        'Only solids, surfaces, meshes, SubDs and blocks are sent.'))
 
         if tower:
             bb = [it['e']['bb'] for it in tower]
@@ -400,13 +403,14 @@ class Model(object):
             x1, y1, z1 = max(b[3] for b in bb), max(b[4] for b in bb), max(b[5] for b in bb)
             h, w = z1 - z0, max(x1 - x0, y1 - y0)
             if h > 900 or w > 400:
-                out.append(('warn', 'The tower measures %.0f m tall and %.0f m across. Check the units: a model drawn in millimetres with the units set to metres comes in 1000 times too big.' % (h, w), ids(tower), None))
+                out.append(('warn', 'Tower is %.0f m tall: check units' % h, ids(tower), None,
+                            'A model drawn in millimetres with the units set to metres comes in 1000 times too big.'))
             elif h < 3:
-                out.append(('warn', 'The tower is only %.2f m tall. Check the units (Options > Units).' % h, ids(tower), None))
+                out.append(('warn', 'Tower is %.2f m tall: check units' % h, ids(tower), None, 'Options > Units.'))
             open_vol = [it for it in tower if it['key'] in ('tower', 'mass', 'core') and not it['e']['closed']]
             if open_vol:
-                out.append(('warn', '%d tower volume%s not closed. The massing needs closed solids: Cap, Join or MeshRepair them, or move surfaces to Facade / Windows.' % (
-                    len(open_vol), 's are' if len(open_vol) != 1 else ' is'), ids(open_vol), None))
+                out.append(('warn', '%s not closed' % plural(len(open_vol), 'volume'), ids(open_vol), None,
+                            'The massing needs closed solids. Cap, Join or MeshRepair them, or move loose surfaces to Facade or Windows.'))
             floors = by.get('floor', []) + by.get('ground', [])
             if floors:
                 levels = []
@@ -415,38 +419,40 @@ class Model(object):
                         levels.append(z)
                 thick = [it for it in floors if it['e']['bb'][5] - it['e']['bb'][2] > 1.5]
                 if len(levels) < 3:
-                    out.append(('warn', 'Only %d floor-plate level%s. The tool needs three or more at storey spacing to read the storeys; otherwise it slices the mass at the floor-to-floor height you set.' % (
-                        len(levels), '' if len(levels) == 1 else 's'), ids(floors), None))
+                    out.append(('warn', 'Only %s' % plural(len(levels), 'floor level'), ids(floors), None,
+                                'Three or more plates at storey spacing set the storeys. With fewer, the tool slices the mass at the floor-to-floor height you set.'))
                 else:
-                    gaps = [b - a for a, b in zip(levels, levels[1:])]
-                    gaps.sort()
-                    out.append(('ok', '%d floor levels, typical floor-to-floor %.2f m.' % (len(levels), gaps[len(gaps) // 2]), ids(floors), None))
+                    gaps = sorted(b - a for a, b in zip(levels, levels[1:]))
+                    out.append(('ok', '%d floors, %.2f m floor to floor' % (len(levels), gaps[len(gaps) // 2]), ids(floors), None,
+                                'Read from the floor plates.'))
                 if thick:
-                    out.append(('warn', '%d floor-plate object%s more than 1.5 m thick. Plates should be slabs, one per level.' % (
-                        len(thick), 's are' if len(thick) != 1 else ' is'), ids(thick), None))
+                    out.append(('warn', '%s over 1.5 m thick' % plural(len(thick), 'plate'), ids(thick), None,
+                                'Floor plates should be slabs, one per level.'))
             else:
-                out.append(('info', 'No floor plates. The tool slices the massing at the floor-to-floor height you set in Design development.', [], None))
+                out.append(('info', 'No floor plates', [], None,
+                            'The tool slices the massing at the floor-to-floor height you set in Design development.'))
             ground = by.get('ground', [])
             gz = max(it['e']['bb'][5] for it in ground) if ground else z0
-            what = 'The ground floor' if ground else 'The tower base'
             if not by.get('terrain') and abs(gz) > 0.5:
                 dz = gz / c['scale']
-                out.append(('warn', '%s is at z = %.2f m. The tool reads model z = 0 as the ground; geometry below 0 becomes basement. Fix moves every sent object by %.2f m.' % (
-                    what, gz, -gz), ids(ground or tower), lambda dz=dz: self.move_all(c, dz)))
+                out.append(('warn', 'Ground at z %.2f m' % gz, ids(ground or tower), lambda dz=dz: self.move_all(c, dz),
+                            'The tool reads z = 0 as the ground; anything below becomes basement. Fix moves every sent object by %.2f m (one undo).' % -gz))
             elif ground:
-                out.append(('ok', 'Ground floor at z = %.2f m.' % gz, ids(ground), None))
-            if math_hypot((x0 + x1) / 2, (y0 + y1) / 2) > 2000:
-                out.append(('info', 'The tower is %.1f km from the origin. The tool moves it onto the parcel unless the model is in the Vancouver base model\'s coordinates.' % (
-                    math_hypot((x0 + x1) / 2, (y0 + y1) / 2) / 1000.0), ids(tower), None))
+                out.append(('ok', 'Ground at z 0', ids(ground), None, 'The ground floor sits on the site ground.'))
+            far = math_hypot((x0 + x1) / 2, (y0 + y1) / 2)
+            if far > 2000:
+                out.append(('info', '%.1f km from origin' % (far / 1000.0), ids(tower), None,
+                            'The tool moves the tower onto the parcel unless the model uses the Vancouver base model coordinates.'))
             if not by.get('window') and (by.get('facade') or by.get('floor')):
-                out.append(('info', 'No windows layer: the window-to-wall ratio is set in the tool instead of read from the model.', [], None))
+                out.append(('info', 'No windows', [], None, 'The window-to-wall ratio is set in the tool instead.'))
 
         tris = sum(it['e']['tris'] for it in items)
         if tris > 1500000:
-            out.append(('warn', '%s triangles. Live updates will be slow: switch to Fast meshes, simplify the context or turn off layers you do not need.' % format(tris, ','), [], None))
+            out.append(('warn', '%s triangles: slow updates' % format(tris, ','), [], None,
+                        'Use Fast meshes, simplify the context or hide layers you do not need.'))
         if not any(o[0] in ('error', 'warn') for o in out) and tower:
-            counts = ', '.join('%d %s' % (len(by[k]), T[k][1].split(': ')[-1].lower()) for k in KEYS if k in by)
-            out.insert(0, ('ok', 'Ready: %s; %s triangles.' % (counts, format(tris, ',')), [], None))
+            counts = ', '.join('%d %s' % (len(by[k]), SHORT[k].lower()) for k in KEYS if k in by)
+            out.insert(0, ('ok', 'Ready to send', ids(items), None, '%s. %s triangles.' % (counts, format(tris, ','))))
         return out
 
     def move_all(self, c, dz):
@@ -562,6 +568,7 @@ class Link(object):
         self.dirty = True
         self.changed_at = 0.0
         self.layers_dirty = False
+        self.check_dirty = True
         self.last_poll = 0.0
         self.last_build = 0.0
         self.build_ms = 0
@@ -572,15 +579,18 @@ class Link(object):
         self.handlers = []
 
     # --- events
-    def _changed(self, sender, e):
+    def touch(self, layers=False):
         self.dirty = True
+        self.check_dirty = True
         self.changed_at = time.time()
+        if layers:
+            self.layers_dirty = True
+
+    def _changed(self, sender, e):
+        self.touch(layers=not self.mute)
 
     def _layers(self, sender, e):
-        self.dirty = True
-        self.changed_at = time.time()
-        if not self.mute:
-            self.layers_dirty = True
+        self.touch(layers=not self.mute)
 
     def _doc(self, sender, e):
         self.model.cache = {}
@@ -593,9 +603,16 @@ class Link(object):
                 self.ui.refresh_layers()
             if self.server and self.dirty and time.time() - self.changed_at > 0.5:
                 self.build()
-            if self.ui and self.server and time.time() - getattr(self, '_tick', 0) > 1.0:
+            if self.ui and self.check_dirty:
+                if self.ui.tabs.SelectedIndex == 1:
+                    if time.time() - self.changed_at > 0.6:
+                        self.ui.run_check()
+                elif self.ui.tabs.Pages[1].Text != 'Check':
+                    self.ui.tabs.Pages[1].Text = 'Check'  # the count is stale until the tab is opened again
+            if self.ui and time.time() - getattr(self, '_tick', 0) > 1.0:
                 self._tick = time.time()
                 self.ui.show_status()
+                self.ui.tick()
         except Exception as ex:
             say('idle error: %s' % ex)
 
@@ -696,24 +713,50 @@ class Link(object):
 
 # ----------------------------------------------------------------------------------------------- panel
 
-def label(text, bold=False, muted=False, wrap=False):
+GREY = (178, 186, 194)
+GREEN = (60, 154, 95)
+AMBER = (217, 164, 65)
+RED = (200, 85, 61)
+MARK = {'error': u'✕  ', 'warn': u'!   ', 'info': u'·   ', 'ok': u'✓  '}
+
+
+def enum_none(E):
+    """The member named None of a .NET enum: IronPython calls it None, Python.NET None_ (or it is 0)."""
+    for n in ('None', 'None_'):
+        try:
+            return getattr(E, n)
+        except AttributeError:
+            pass
+    return System.Enum.ToObject(E, 0)
+
+
+def color(rgb):
+    return drawing.Color.FromArgb(rgb[0], rgb[1], rgb[2], 255)
+
+
+def label(text, muted=False, bold=False, wrap=False, tip=None):
     l = forms.Label()
     l.Text = text
     if bold:
         try:
-            l.Font = drawing.Fonts.Sans(l.Font.Size, drawing.FontStyle.Bold, drawing.FontDecoration.none if hasattr(drawing.FontDecoration, 'none') else getattr(drawing.FontDecoration, 'None'))
+            l.Font = drawing.Fonts.Sans(l.Font.Size, drawing.FontStyle.Bold, enum_none(drawing.FontDecoration))
         except Exception:
             pass
     if muted:
         l.TextColor = drawing.Colors.Gray
     if wrap:
         l.Wrap = forms.WrapMode.Word
+    if tip:
+        l.ToolTip = tip
+    l.VerticalAlignment = forms.VerticalAlignment.Center
     return l
 
 
-def button(text, fn):
+def button(text, fn, tip=None):
     b = forms.Button()
     b.Text = text
+    if tip:
+        b.ToolTip = tip
     b.Click += (lambda s, e: guarded(fn))
     return b
 
@@ -727,13 +770,46 @@ def guarded(fn):
         traceback.print_exc()
 
 
+def hrow(controls, scale=None, spacing=6):
+    """One row of controls; the control at index `scale` (or a None spacer) takes the spare width."""
+    t = forms.TableLayout()
+    t.Spacing = drawing.Size(spacing, 0)
+    r = forms.TableRow()
+    for i, c in enumerate(controls):
+        cell = forms.TableCell()
+        if c is not None:
+            cell.Control = c
+        cell.ScaleWidth = (i == scale) or c is None
+        r.Cells.Add(cell)
+    t.Rows.Add(r)
+    return t
+
+
+def vbox(controls, scale=None, padding=0, spacing=8):
+    """Controls stacked; the one at index `scale` takes the spare height."""
+    t = forms.TableLayout()
+    t.Padding = drawing.Padding(padding)
+    t.Spacing = drawing.Size(0, spacing)
+    for i, c in enumerate(controls):
+        r = forms.TableRow()
+        cell = forms.TableCell()
+        cell.Control = c
+        cell.ScaleWidth = True
+        r.Cells.Add(cell)
+        r.ScaleHeight = (i == scale)
+        t.Rows.Add(r)
+    return t
+
+
 class Panel(object):
     def __init__(self, link):
         self.link = link
         self.issues = []
+        self.note_at = 0.0
         f = forms.Form()
         f.Title = 'Sun & Wind Link'
-        f.ClientSize = drawing.Size(470, 760)
+        f.ClientSize = drawing.Size(340, 540)
+        f.MinimumSize = drawing.Size(300, 420)
         f.Resizable = True
         f.Minimizable = True
         try:
@@ -742,47 +818,83 @@ class Panel(object):
             pass
         self.form = f
 
-        self.status = label('Link off.', wrap=True)
+        # link bar: state on the left, the two actions on the right
+        self.dot = label(u'●')
+        self.state = label('Off', bold=True)
+        self.detail = label('', muted=True)
+        self.go = button('Start', self.toggle, 'Serve this model to Sun & Wind Studio. Only this computer can connect.')
+        self.open_btn = button('Open tool', self.open_tool, 'Open the tool, already linked to this model.')
+        top = hrow([self.dot, self.state, self.detail, None, self.go, self.open_btn], spacing=5)
+
+        # Layers tab
         self.layer_box = forms.Scrollable()
-        self.layer_box.Height = 250
+        try:
+            self.layer_box.Border = enum_none(forms.BorderType)
+        except Exception:
+            pass
         self.move_dd = forms.DropDown()
         for t in TARGETS[:-1]:
-            self.move_dd.Items.Add(t[1])
+            self.move_dd.Items.Add(SHORT[t[0]])
         self.move_dd.SelectedIndex = 0
+        layers_page = vbox([
+            hrow([button('Create layers', self.create_layers, 'Add the SW Tower, Shading, PV, Context and Terrain layers.'),
+                  button('Auto-map', self.auto_map, 'Set your layers by their names, e.g. A-GLAZ to Windows.'), None]),
+            self.layer_box,
+            hrow([label('Selected to', muted=True), self.move_dd, button('Move', self.move_selected, 'Move the selected objects onto that layer.')], scale=1),
+        ], scale=1, padding=8)
+
+        # Check tab
         self.issue_list = forms.ListBox()
-        self.issue_list.Height = 170
-        self.issue_list.MouseDoubleClick += (lambda s, e: guarded(self.select_issue))
+        self.issue_list.SelectedIndexChanged += (lambda s, e: guarded(self.select_issue))
+        self.tip = label('', muted=True, wrap=True)
+        self.fix_btn = button('Fix', self.fix_issue)
+        self.fix_btn.Visible = False
+        check_page = vbox([self.issue_list, self.tip, hrow([None, self.fix_btn])], scale=0, padding=8)
+
+        self.tabs = forms.TabControl()
+        for title, content in (('Layers', layers_page), ('Check', check_page)):
+            p = forms.TabPage()
+            p.Text = title
+            p.Content = content
+            self.tabs.Pages.Add(p)
+        self.tabs.SelectedIndexChanged += (lambda s, e: guarded(self.on_tab))
+
+        # settings, folded away
         self.port = forms.NumericStepper()
         self.port.MinValue = 1024
         self.port.MaxValue = 65535
         self.port.DecimalPlaces = 0
         self.port.Value = link.port
-        self.go = button('Start link', self.toggle)
         self.quality = forms.DropDown()
-        self.quality.Items.Add('Fast meshes')
-        self.quality.Items.Add('Smooth meshes (curved facades)')
+        self.quality.Items.Add('Fast')
+        self.quality.Items.Add('Smooth')
+        self.quality.ToolTip = 'Smooth suits curved facades but makes updates heavier.'
         self.quality.SelectedIndex = 1 if link.model.smooth else 0
         self.quality.SelectedIndexChanged += (lambda s, e: guarded(self.set_quality))
+        more = forms.Expander()
+        more.Header = label('Settings', muted=True)
+        more.Expanded = False
+        self.more = more
+        more.Content = vbox([
+            hrow([label('Port', muted=True), self.port, label('Meshes', muted=True), self.quality, None]),
+            hrow([button('Export JSON...', self.export, 'Save the model as a file the tool can open.'), None]),
+        ], padding=4, spacing=6)
 
-        lay = forms.DynamicLayout()
-        lay.Padding = drawing.Padding(12)
-        lay.Spacing = drawing.Size(6, 6)
-        lay.Add(self.status)
-        lay.Add(label('1  Layers', bold=True))
-        lay.Add(label('Each layer sends its objects as one target. Sublayers follow their parent unless set. Unmapped layers are not sent.', muted=True, wrap=True))
-        lay.AddSeparateRow(button('Create SW layers', self.create_layers), button('Auto-map by name', self.auto_map), button('Refresh', self.refresh_layers))
-        lay.Add(self.layer_box)
-        lay.AddSeparateRow(label('Selected objects to'), self.move_dd, button('Move', self.move_selected))
-        lay.Add(label('2  Check', bold=True))
-        lay.AddSeparateRow(button('Check model', self.run_check), button('Select objects', self.select_issue), button('Fix', self.fix_issue))
-        lay.Add(self.issue_list)
-        lay.Add(label('3  Live link', bold=True))
-        lay.AddSeparateRow(label('Port'), self.port, self.go, button('Open the tool', self.open_tool))
-        lay.AddSeparateRow(self.quality, button('Export JSON...', self.export))
-        lay.Add(label('Only this computer can connect, and only from the tool\'s own sites. Closing this panel stops the link.', muted=True, wrap=True))
-        f.Content = lay
+        self.status = label('', muted=True, wrap=True)   # short notes after an action
+        f.Content = vbox([top, self.tabs, more, self.status], scale=1, padding=10)
         f.Closed += (lambda s, e: guarded(self.closed))
+        self.show_status()
         self.refresh_layers()
+
+    # --- notes
+    def note(self, text):
+        self.status.Text = text
+        self.note_at = time.time()
+        say(text)
+
+    def tick(self):
+        if self.status.Text and time.time() - self.note_at > 6:
+            self.status.Text = ''
 
     # --- layers
     def refresh_layers(self):
@@ -798,24 +910,42 @@ class Panel(object):
                 continue
             key, inh = targets.get(L.Index, (None, False))
             own = self.link.model.stored_key(L)
-            if counts.get(L.Index) or own or L.FullPath.lower() in STD_PATHS:
+            if counts.get(L.Index):  # only layers with visible objects; empty SW layers stay out of the way
                 rows.append((L, own, key if inh else None))
         rows.sort(key=lambda r: r[0].FullPath.lower())
-        inner = forms.DynamicLayout()
-        inner.Spacing = drawing.Size(6, 3)
+        table = forms.TableLayout()
+        table.Spacing = drawing.Size(6, 2)
         if not rows:
-            inner.Add(label('No objects yet. Create the SW layers or draw on your own layers, then Refresh.', muted=True, wrap=True))
+            r = forms.TableRow()
+            cell = forms.TableCell()
+            cell.Control = label('No objects yet. Create layers, or draw on your own.', muted=True, wrap=True)
+            r.Cells.Add(cell)
+            table.Rows.Add(r)
         for L, own, parent_key in rows:
+            shown = own or parent_key
+            dot = label(u'■')
+            dot.TextColor = color(T[shown][5] if shown and T[shown][5] else GREY)
+            depth = L.FullPath.count('::')
+            n = counts.get(L.Index, 0)
+            name = label('    ' * depth + L.Name, muted=not shown, tip='%s\n%s' % (L.FullPath, '%d object%s' % (n, '' if n == 1 else 's') if n else 'empty'))
             dd = forms.DropDown()
-            dd.Items.Add('As parent: ' + T[parent_key][1] if parent_key else 'Not sent')
+            dd.Items.Add((u'↳ ' + SHORT[parent_key]) if parent_key else u'—')
             for t in TARGETS:
-                dd.Items.Add(t[1])
+                dd.Items.Add(SHORT[t[0]])
             dd.SelectedIndex = (KEYS.index(own) + 1) if own else 0
+            dd.Width = 124
             dd.SelectedIndexChanged += self._on_map(L.Index)
-            name = label(L.FullPath)
-            name.ToolTip = L.FullPath
-            inner.AddRow(name, label(str(counts.get(L.Index, 0)), muted=True), dd)
-        self.layer_box.Content = inner
+            r = forms.TableRow()
+            for c, sw in ((dot, False), (name, True), (dd, False)):
+                cell = forms.TableCell()
+                cell.Control = c
+                cell.ScaleWidth = sw
+                r.Cells.Add(cell)
+            table.Rows.Add(r)
+        spare = forms.TableRow()
+        spare.ScaleHeight = True  # spare height goes below the rows
+        table.Rows.Add(spare)
+        self.layer_box.Content = table
 
     def _on_map(self, index):
         def fn(sender, e):
@@ -827,9 +957,7 @@ class Panel(object):
                     self.link.model.set_key(index, key)
                 finally:
                     self.link.mute = False
-                self.link.dirty = True
-                self.link.changed_at = time.time()
-                self.link.layers_dirty = True  # sublayer labels show the new parent target
+                self.link.touch(layers=True)
             guarded(go)
         return fn
 
@@ -863,7 +991,8 @@ class Panel(object):
             if t[4]:
                 self.ensure_layer(t[0])
         self.refresh_layers()
-        say('%d Sun & Wind layers added' % (doc.Layers.Count - before))
+        added = doc.Layers.Count - before
+        self.note('Layers ready' if not added else '%d layers added' % added)
 
     def auto_map(self):
         doc = self.link.model.doc()
@@ -883,20 +1012,16 @@ class Panel(object):
                 n += 1
             else:
                 left.append(L.FullPath)
-        self.link.dirty = True
+        self.link.touch()
         self.refresh_layers()
-        msg = 'Auto-map set %d layer%s.' % (n, '' if n == 1 else 's')
-        if left:
-            msg += ' Still unmapped: %s%s.' % (', '.join(left[:4]), ' ...' if len(left) > 4 else '')
-        self.status.Text = msg
-        say(msg)
+        self.note('%d mapped%s' % (n, (', still unset: ' + ', '.join(left[:3]) + (' ...' if len(left) > 3 else '')) if left else ''))
 
     def move_selected(self):
         doc = self.link.model.doc()
         key = KEYS[self.move_dd.SelectedIndex]
         sel = list(doc.Objects.GetSelectedObjects(False, False))
         if not sel:
-            self.status.Text = 'Select objects in Rhino first, then Move.'
+            self.note('Select objects in Rhino first')
             return
         idx = self.ensure_layer(key)
         sn = doc.BeginUndoRecord('Sun & Wind: move to layer')
@@ -909,20 +1034,32 @@ class Panel(object):
             doc.EndUndoRecord(sn)
         doc.Views.Redraw()
         self.refresh_layers()
-        self.status.Text = 'Moved %d object%s to %s.' % (len(sel), '' if len(sel) == 1 else 's', T[key][4])
+        self.note('Moved %d to %s' % (len(sel), SHORT[key]))
 
     # --- check
+    def on_tab(self):
+        if self.tabs.SelectedIndex == 1:
+            self.run_check()
+
     def run_check(self):
         c = self.link.build() if self.link.server else self.link.model.collect()
         self.issues = self.link.model.check(c)
-        self.issue_list.Items.Clear()
-        mark = {'error': 'X ', 'warn': '! ', 'info': 'i ', 'ok': 'OK '}
-        for lv, text, ids, fix in self.issues:
-            self.issue_list.Items.Add(mark[lv] + text + (' [Fix]' if fix else ''))
-        errs = sum(1 for i in self.issues if i[0] == 'error')
-        warns = sum(1 for i in self.issues if i[0] == 'warn')
-        self.status.Text = ('Check: %d error%s, %d warning%s. Double-click a line to select its objects.' % (
-            errs, '' if errs == 1 else 's', warns, '' if warns == 1 else 's')) if (errs or warns) else 'Check: ready to send.'
+        self.link.check_dirty = False
+        keep = self.issue_list.SelectedIndex
+        self._filling = True
+        try:
+            self.issue_list.Items.Clear()
+            for lv, text, ids, fix, tip in self.issues:
+                self.issue_list.Items.Add(MARK[lv] + text)
+        finally:
+            self._filling = False
+        bad = sum(1 for i in self.issues if i[0] in ('error', 'warn'))
+        self.tabs.Pages[1].Text = ('Check (%d)' % bad) if bad else u'Check ✓'
+        if 0 <= keep < len(self.issues):
+            self.issue_list.SelectedIndex = keep
+        else:
+            self.tip.Text = 'Select a line to see it in the model.' if self.issues else ''
+            self.fix_btn.Visible = False
 
     def _issue(self):
         i = self.issue_list.SelectedIndex
@@ -930,24 +1067,24 @@ class Panel(object):
 
     def select_issue(self):
         it = self._issue()
-        if not it or not it[2]:
+        self.fix_btn.Visible = bool(it and it[3])
+        self.tip.Text = it[4] if it else ''
+        if not it or getattr(self, '_filling', False):
             return
         doc = self.link.model.doc()
         doc.Objects.UnselectAll()
-        n = 0
         for i in it[2]:
-            if doc.Objects.Select(i, True):
-                n += 1
+            doc.Objects.Select(i, True)
         doc.Views.Redraw()
-        self.status.Text = '%d object%s selected.' % (n, '' if n == 1 else 's')
 
     def fix_issue(self):
         it = self._issue()
         if not it or not it[3]:
-            self.status.Text = 'Pick a line marked [Fix] first.'
             return
         it[3]()
+        self.issue_list.SelectedIndex = -1
         self.run_check()
+        self.note('Fixed')
 
     # --- link
     def toggle(self):
@@ -959,14 +1096,18 @@ class Panel(object):
 
     def show_status(self):
         L = self.link
-        self.go.Text = 'Stop link' if L.server else 'Start link'
+        self.go.Text = 'Stop' if L.server else 'Start'
         self.port.Enabled = not L.server
         if not L.server:
-            self.status.Text = 'Link off. Start it, then Open the tool (or press Connect in the tool\'s Live link to Rhino).'
+            self.dot.TextColor = color(GREY)
+            self.state.Text = 'Off'
+            self.detail.Text = ''
             return
-        seen = time.time() - L.last_poll < 3
-        self.status.Text = 'Link on: http://127.0.0.1:%d  |  rev %d, %d objects (%d ms)  |  %s' % (
-            L.port, L.rev, L.count, L.build_ms, 'tool connected' if seen else 'waiting for the tool')
+        linked = time.time() - L.last_poll < 3
+        self.dot.TextColor = color(GREEN if linked else AMBER)
+        self.state.Text = 'Live' if linked else 'Waiting'
+        self.detail.Text = '%d objects' % L.count
+        self.detail.ToolTip = 'http://127.0.0.1:%d  rev %d  built in %d ms' % (L.port, L.rev, L.build_ms)
 
     def open_tool(self):
         if not self.link.server:
@@ -984,8 +1125,7 @@ class Panel(object):
 
     def set_quality(self):
         self.link.model.smooth = self.quality.SelectedIndex == 1
-        self.link.dirty = True
-        self.link.changed_at = time.time()
+        self.link.touch()
 
     def export(self):
         dlg = forms.SaveFileDialog()
@@ -1003,7 +1143,7 @@ class Panel(object):
         path = dlg.FileName if dlg.FileName.lower().endswith('.json') else dlg.FileName + '.json'
         with open(path, 'wb') as fh:
             fh.write(body.encode('utf-8'))
-        self.status.Text = 'Exported %d objects to %s. Choose it with Choose a .3dm file in the tool.' % (len(c['items']), path)
+        self.note('Exported %d objects' % len(c['items']))
 
     def closed(self):
         self.link.stop()

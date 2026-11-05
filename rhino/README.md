@@ -20,9 +20,22 @@ To make it a one-word command, open Options › Aliases and add an alias:
 
 Keep `sw_link.py` in the tool's `rhino/` folder. From there it can also serve the tool itself, which is the most reliable way to connect (see below).
 
+## The panel
+
+The panel has a link bar along the top, two tabs, and a folded **Settings** section.
+
+| Part | What it does |
+| --- | --- |
+| **Link bar** | A dot and a word tell you the link's state: grey *Off*, amber *Waiting* for the tool, or green *Live*. **Start** and **Open tool** sit on the right. |
+| **Layers** tab | One row per layer with objects: a swatch in the target's colour, the layer name (indented under its parent), and a drop-down for what it sends as. |
+| **Check** tab | One short line per finding. Select a line to select its objects in Rhino and see the explanation, plus **Fix** when there is one. The tab title shows the number of problems. |
+| **Settings** | Port, mesh quality, **Export JSON…** |
+
+Short notes after an action, such as *5 mapped* or *Moved 3 to Windows*, appear at the bottom and clear after a few seconds. Hover over a layer name for its full path and object count.
+
 ## 1 · Layers
 
-**Create SW layers** adds this tree. Each layer gets its part colour from the tool.
+**Create layers** adds this tree. Each layer gets its part colour from the tool.
 
 | Layer | Sent as | Use it for |
 | --- | --- | --- |
@@ -47,13 +60,13 @@ Keep `sw_link.py` in the tool's `rhino/` folder. From there it can also serve th
 - in the document (`sw.map`);
 - as layer user text (`sw.target`), so a saved .3dm still carries the mapping into the tool.
 
-Sublayers follow their parent unless you set them. **Auto-map by name** maps layers whose names make the target clear, such as `A-GLAZ` → windows, `A-SLAB` → floor plates and `Lobby` → ground floor. **Ignore** keeps a layer out for good. Unmapped layers are never sent, and the check lists them.
+Sublayers follow their parent unless you set them. **Auto-map** maps layers whose names make the target clear, such as `A-GLAZ` → windows, `A-SLAB` → floor plates and `Lobby` → ground floor. **Ignore** keeps a layer out for good. Unmapped layers show a dash (—) and are never sent; the check lists them. Empty layers stay out of the list.
 
-**Selected objects to … › Move** puts the selected objects on a Sun & Wind layer. It creates the layer if needed, and you can undo it.
+**Selected to … › Move** puts the selected objects on a Sun & Wind layer. It creates the layer if needed, and you can undo it.
 
 ## 2 · Check
 
-**Check model** looks at exactly what will be sent:
+The **Check** tab runs when you open it and re-runs as you model. It looks at exactly what will be sent:
 
 - **Units:** everything is sent in metres. It also warns when the tower is 1000× too big or too small.
 - **Unmapped layers:** layers with visible objects that won't be sent.
@@ -64,12 +77,12 @@ Sublayers follow their parent unless you set them. **Auto-map by name** maps lay
 - **Distance from the origin.**
 - **Model size:** more than 1.5 million triangles slows live updates.
 
-Double-click a line, or press **Select objects**, to select the objects it's about.
+Select a line to select the objects it's about in Rhino.
 
 ## 3 · Live link
 
-1. Press **Start link**. The panel serves the model at `http://127.0.0.1:8797` (you can change the port).
-2. Press **Open the tool**. This opens the copy of the tool that Rhino itself serves at `http://127.0.0.1:8797/?link`, which connects on its own.
+1. Press **Start**. The panel serves the model at `http://127.0.0.1:8797` (you can change the port).
+2. Press **Open tool**. This opens the copy of the tool that Rhino itself serves at `http://127.0.0.1:8797/?link`, which connects on its own.
 3. Model as usual. Every add, delete, move, layer change, block edit or units change is picked up. After half a second of quiet it is meshed and sent, and the tool re-imports it.
 
 **What happens on each update:**
@@ -78,9 +91,9 @@ Double-click a line, or press **Select objects**, to select the objects it's abo
 - The context the link sent last time is replaced, not added again.
 - Where you placed the tower on the site is kept between updates. Untick this under **Live link to Rhino** in the tool's Model tab.
 
-**Connecting from another copy of the tool.** Any copy can connect: open **Live link to Rhino** in its Model tab and press **Connect**. Browsers may block a hosted page (such as the claude.ai artifact) from reaching your own computer. If that copy can't connect, use the copy Rhino serves, or use **Export JSON…** and load the file with **Choose a .3dm file**.
+**Connecting from another copy of the tool.** Any copy can connect: open **Live link to Rhino** in its Model tab and press **Connect**. Browsers may block a hosted page (such as the claude.ai artifact) from reaching your own computer. If that copy can't connect, use the copy Rhino serves, or use **Settings › Export JSON…** and load the file with **Choose a .3dm file**.
 
-**Mesh quality.** *Fast meshes* is right for flat-faced towers. *Smooth meshes* suits curved façades but makes updates heavier.
+**Mesh quality** (Settings › Meshes). *Fast* is right for flat-faced towers. *Smooth* suits curved façades but makes updates heavier.
 
 **Privacy.** The server only listens on 127.0.0.1, so nothing outside your computer can reach it. It also refuses web pages from any site other than:
 
