@@ -1320,14 +1320,22 @@ function updateGeomInfo(){ const R=LAB.uploadRaw; const el=$('geom-info'); $('lo
   $('reslice').hidden=!adv(); if(LAB.help) LAB.help.apply(el); if(LAB.modelParts){ const P=LAB.modelParts; el.insertAdjacentHTML('beforeend',`<p class="blurb"><b>Parts confirmed:</b> ${['floor','core','window','facade','structure','stair','ceiling','roof'].filter(k=>P.counts[k]&&P.confirmed[k]).map(k=>P.counts[k]+' '+({floor:'floor plates',core:'core',window:'windows',facade:'façade',structure:'structure',stair:'stairs',ceiling:'ceilings',roof:'roof'})[k]).join(', ')||'none'}${P.wwr?' · window-to-wall '+['N','E','S','W'].map(k=>k+' '+(P.wwr[k]==null?'–':Math.round(P.wwr[k]*100)+'%')).join(' '):''}${P.ceilingH?' · floor-to-ceiling '+P.ceilingH.toFixed(2)+' m':''}${P.openings&&P.openings.head!=null?` · windows from ${P.openings.sill.toFixed(2)} to ${P.openings.head.toFixed(2)} m above the floor on ${P.openings.levels} levels; the façade zones and their shading hang from these heads`:''}</p>`); }
 }
 /* one study as a promise: the sun render (plus daylight and ASE in Advanced) or the wind flow (plus ventilation in Advanced) */
-function progressTo(kind,msg){ $('run-'+kind).textContent=msg; $('run-all-status').textContent=msg; $(kind==='sun'?'run-daylight-status':kind==='wind'?'run-vent-status':'run-rain-status').textContent=msg; $('run-active').textContent=msg; $('run-active').disabled=true; }
+/* buttons that start a study spin while it runs; the analysis bar shows a moving stripe */
+const RUN_BTNS={sun:['run-sun','run-daylight','run-active'],wind:['run-wind','run-vent','run-active'],rain:['run-rain','run-active']};
+function busyLook(kind,on){ (RUN_BTNS[kind]||[]).forEach(id=>{ const b=$(id); if(b){ b.classList.toggle('is-busy',on); b.classList.remove('is-done'); b.setAttribute('aria-busy',String(on)); } }); const bar=$('abar'); if(bar) bar.classList.toggle('busy',on); }
+function progressTo(kind,msg){ $('run-'+kind).textContent=msg; $('run-all-status').textContent=msg; $(kind==='sun'?'run-daylight-status':kind==='wind'?'run-vent-status':'run-rain-status').textContent=msg; $('run-active').textContent=msg; $('run-active').disabled=true; busyLook(kind,true); }
+let doneTimer=0;
 function runStudy(kind){
+  const t0=performance.now();
   return new Promise(resolve=>{ busy=true; progressTo(kind,'Computing…'); setTimeout(async()=>{
     try{ if(kind==='sun'){ runSunStudy(); if(adv()&&sunResult){ progressTo('sun','Daylight factors…'); await new Promise(r=>setTimeout(r,20)); sunResult.daylight=daylightTower(); sunResult.ase=await aseTower(msg=>progressTo('sun',msg)); sunResult.advanced=true; } if(sunResult) sunResult.at=Date.now(); }
       else if(kind==='rain'){ await LAB.rain.run(msg=>progressTo('rain',msg)); }
       else { await runWindStudy(msg=>progressTo('wind',msg)); if(adv()&&windResult){ progressTo('wind','Natural ventilation…'); windResult.vent=ventStudy(); windResult.vt=ventTowerQuick(); windResult.terr=terraceWind(); windResult.advanced=true; } if(windResult) windResult.at=Date.now(); }
     }catch(e){ console.error(e); LAB.toast&&LAB.toast((kind==='sun'?'Sun':kind==='rain'?'Rain':'Wind')+' study failed: '+e.message,true); }
-    busy=false; stale[kind]=false; showStale(); $('run-all-status').textContent=''; $('run-daylight-status').textContent=''; $('run-vent-status').textContent=''; $('run-rain-status').textContent=''; updateLegend(); if(kind==='sun') renderSun(sunResult); else if(kind==='rain') renderRain(); else renderWind(windResult); resolve(); },30); });
+    { const wait=700-(performance.now()-t0); if(wait>0) await new Promise(r=>setTimeout(r,wait)); } // long enough to see that it ran
+    busy=false; busyLook(kind,false); stale[kind]=false; showStale(); $('run-all-status').textContent=''; $('run-daylight-status').textContent=''; $('run-vent-status').textContent=''; $('run-rain-status').textContent=''; updateLegend(); if(kind==='sun') renderSun(sunResult); else if(kind==='rain') renderRain(); else renderWind(windResult);
+    { const b=$('run-active'); b.textContent='Done ✓'; b.classList.add('is-done'); clearTimeout(doneTimer); doneTimer=setTimeout(()=>{ b.classList.remove('is-done'); if(!busy) updateLegend(); },1400); }
+    resolve(); },30); });
 }
 function runCurrent(force){
   const m=LAB.S.impact.mode, floors=LAB.floors; if(!floors) return;
