@@ -6,6 +6,10 @@ A Rhino panel that sets up your model for Sun & Wind Studio and keeps the tool i
 2. **Check.** It looks for problems that would make the analysis wrong.
 3. **Live link.** It serves the model to the tool in your browser, which re-imports it within a second or two of every change.
 
+## Download
+
+**[Download sw_link.py](https://xubynii.github.io/sun-wind-studio/rhino/sw_link.py)**: one file, nothing to install. Save it anywhere, for example in your Documents folder.
+
 ## Run it
 
 | Rhino | How |
@@ -16,9 +20,9 @@ A Rhino panel that sets up your model for Sun & Wind Studio and keeps the tool i
 To make it a one-word command, open Options › Aliases and add an alias:
 
 - **Alias:** `SWLink`
-- **Command:** `! _-RunPythonScript "C:\Users\sinnie\OneDrive\Desktop\sun-wind-studio\rhino\sw_link.py"`
+- **Command:** `! _-RunPythonScript "C:\path\to\sw_link.py"` (the folder you saved it in)
 
-Keep `sw_link.py` in the tool's `rhino/` folder. From there it can also serve the tool itself, which is the most reliable way to connect (see below).
+**Open tool** opens the online tool at xubynii.github.io and connects it to Rhino. If you cloned the whole repository and run `sw_link.py` from its `rhino/` folder, the plugin serves the tool itself instead. This is the most reliable way to connect (see below).
 
 ## The panel
 
