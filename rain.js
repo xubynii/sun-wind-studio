@@ -4,7 +4,7 @@
 'use strict';
 const LAB=window.LAB; const $=LAB.$, fmtI=LAB.fmtI; const C=LAB.CLIMATE;
 const ORI=['N','E','S','W']; const NAMES={N:'North',E:'East',S:'South',W:'West'}; const FACE_AZ={N:0,E:90,S:180,W:270};
-/* share of the year's rain arriving with wind from each sector (Vancouver: frontal rain rides on south-easterlies; summer showers are lighter and westerly) */
+/* fallback only, when weather.json is missing: share of the year's rain by wind sector (the loaded CWEC year puts most of it on easterlies) */
 const RAIN_ROSE=[{name:'N',dir:0,f:0.03},{name:'NE',dir:45,f:0.05},{name:'E',dir:90,f:0.17},{name:'SE',dir:135,f:0.34},{name:'S',dir:180,f:0.17},{name:'SW',dir:225,f:0.10},{name:'W',dir:270,f:0.09},{name:'NW',dir:315,f:0.05}];
 const RAIN_SPEED={N:3.5,NE:4,E:5,SE:6.5,S:5,SW:4.5,W:4.5,NW:4};
 const P={
@@ -17,7 +17,7 @@ const P={
 const RUNOFF={paved:0.9,mixed:0.6,planted:0.3};
 const VT={drizzle:2.0,steady:5.0,heavy:8.0};
 let R=null; // last result
-function state(){ const S=LAB.S; if(!S.rain){ S.rain={dir:135,speed:9,drop:'steady',dur:60,surface:'paved'}; } if(S.rain.dur==null) S.rain.dur=60; if(!S.rain.surface) S.rain.surface='paved'; if(!S.rain.fromData&&C.loaded&&C.stormSpeedP95){ S.rain.speed=Math.max(6,Math.round(C.stormSpeedP95*2)/2); const top=C.rainRose&&C.rainRose.slice().sort((a,b)=>b.f-a.f)[0]; if(top) S.rain.dir=top.dir; S.rain.fromData=true; } return S.rain; }
+function state(){ const S=LAB.S; if(!S.rain){ S.rain={dir:135,speed:9,drop:'steady',dur:60,surface:'paved'}; } if(S.rain.dur==null) S.rain.dur=60; if(!S.rain.surface) S.rain.surface='paved'; if(!S.rain.fromData&&C.loaded&&C.stormSpeedP95){ S.rain.speed=Math.max(6,Math.round(C.stormSpeedP95*2)/2); const top=C.rainRose&&C.rainRose.slice().sort((a,b)=>b.f-a.f)[0]; if(top) S.rain.dir=top.dir; S.rain.fromData=true; const el=$('params-rain'); if(el&&el.childElementCount) setTimeout(()=>LAB.syncFor(el,P,'rn',S.rain),0); } return S.rain; } // the weather can arrive after the controls are built: bring the sliders along
 function rose(){ return (C.loaded&&C.rainRose&&C.rainRose.some(r=>r.f>0))?C.rainRose:RAIN_ROSE; }
 function roseSpeed(r){ return (C.loaded&&C.rainRose&&r.s)?r.s:RAIN_SPEED[r.name]; }
 function angle(){ const s=state(); const alpha=Math.atan(s.speed/VT[s.drop]); return {alpha,alt:Math.PI/2-alpha}; } // alpha from vertical; the rain vector falls at altitude 90−alpha
@@ -148,14 +148,55 @@ function roofMonthsSVG(R){ const V=LAB.viz; return V.months([{name:'collected m�
 function roofSection(r){ const V=LAB.viz; const s=state(); let h='';
   const RC=roofCollect(r); if(RC.area>0){ h+=`<h3>How much the roof can collect</h3><div class="kpi">${kp('Collected a year',fmtI(RC.annual)+' m³',fmtI(RC.annual*1000)+' L from '+fmtI(RC.area)+' m² of roof and terraces','ok')}${kp('In the design storm',fmtI(RC.storm)+' m³',RC.stormMM.toFixed(0)+' mm in '+s.dur+' min · peak '+RC.peakLs.toFixed(0)+' L/s to the drains')}${kp('Per mm of rain',fmtI(RC.perMm)+' L',RC.flushShare!=null?'covers '+Math.round(RC.flushShare*100)+'% of toilet flushing for '+fmtI(RC.people)+' people':'at '+Math.round(ROOF_C*100)+'% run-off')}</div>`+V.row(V.fig(roofSurfacesSVG(RC),'Annual rain × area × '+Math.round(ROOF_C*100)+'% run-off for each surface; the main roof and the largest terraces do most of the work.'),V.fig(roofMonthsSVG(RC),`Vancouver's rain falls October to March: November alone gives about ${Math.round(RC.monthly[10].m3/Math.max(1,RC.annual)*100)}% of the year, July about ${Math.round(RC.monthly[6].m3/Math.max(1,RC.annual)*100)}%.`)); }
   return h; }
-function rainRoseSVG(){ const V=LAB.viz; return V.rose(rose().map(x=>({name:x.name,dir:x.dir,f:x.f,s:roseSpeed(x),text:Math.round(x.f*100)+'% of the year\'s rain'})),{key:'rain-rose',title:'Rain rose · share of annual rain by wind sector',color:'#2F6FA8',sUnit:'m/s mean'}); }
+/* ---------- where the rain comes from: 16-sector rain roses from the hourly typical year, for the tab's period and month by month ---------- */
+const N16=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+const WORD={N:'north',NNE:'north-north-east',NE:'north-east',ENE:'east-north-east',E:'east',ESE:'east-south-east',SE:'south-east',SSE:'south-south-east',S:'south',SSW:'south-south-west',SW:'south-west',WSW:'west-south-west',W:'west',WNW:'west-north-west',NW:'north-west',NNW:'north-north-west'};
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MD=[31,28,31,30,31,30,31,31,30,31,30,31];
+let monthOfHour=null; function mOf(i){ if(!monthOfHour){ monthOfHour=new Uint8Array(8760); let k=0; MD.forEach((d,m)=>{ for(let j=0;j<d*24;j++) monthOfHour[k++]=m; }); } return monthOfHour[i]; }
+/* rain (mm) by sector during the hours that pass keep(i); calm hours (wind under 0.5 m/s) are counted apart */
+function rainBySector(keep){ const H=C.loaded&&C.hourly; if(!H||!H.rain) return null; const mm=new Array(16).fill(0), ws=new Array(16).fill(0); let tot=0, calm=0;
+  for(let i=0;i<8760;i++){ const r=H.rain[i]; if(!r||!keep(i)) continue; tot+=r; if(H.ws[i]<0.5){ calm+=r; continue; } const k=Math.round(H.wd[i]/22.5)%16; mm[k]+=r; ws[k]+=H.ws[i]*r; }
+  if(tot<=0) return null; const sec=mm.map((v,k)=>({name:N16[k],dir:k*22.5,f:v/tot,mm:v,s:v>0?ws[k]/v:0})); const ranked=sec.slice().sort((a,b)=>b.f-a.f);
+  return {sec,ranked,tot,calm:calm/tot}; }
+function inPeriod(){ const PI=LAB.sim&&LAB.sim.periodInfo?LAB.sim.periodInfo():{full:true}; if(PI.full) return {keep:()=>true,label:'the year'}; return {keep:i=>((Math.floor(i/24)+1-PI.d0+365)%365)<PI.days,label:PI.label}; }
+function rainFrom(){ const P=inPeriod(); const A=rainBySector(P.keep); if(!A) return null; A.label=P.label; A.months=MON.map((n,m)=>{ const x=rainBySector(i=>mOf(i)===m); return x?{n,mm:x.tot,top:x.ranked[0],second:x.ranked[1]}:{n,mm:0,top:null}; }); return A; }
+function rainRoseSVG(){ const V=LAB.viz; const A=rainFrom();
+  if(!A) return V.rose(rose().map(x=>({name:x.name,dir:x.dir,f:x.f,s:roseSpeed(x),text:Math.round(x.f*100)+'% of the year\'s rain'})),{key:'rain-rose',title:'Rain rose · share of annual rain by wind sector',color:'#2F6FA8',sUnit:'m/s mean'});
+  return V.rose(A.sec.map(x=>({name:x.dir%45?'':x.name,dir:x.dir,f:x.f,s:x.s,text:x.name+' · '+Math.round(x.f*100)+'% of the rain ('+fmtI(x.mm)+' mm)'})),{key:'rain-rose',title:'Rain by wind direction · '+A.label,color:'#2F6FA8',sUnit:'m/s mean wind'}); }
+/* twelve small dials: the arrow comes in from the side most of that month's rain arrives from; the bar under each is the month's rain */
+function monthsSVG(A){ const W=380, cw=W/12, r=11, top=14, cy=top+r+2, bar0=cy+r+18, bh=34, H=bar0+bh+12; const max=Math.max(1,...A.months.map(m=>m.mm));
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Rain direction by month" data-key="rain-months"><style>text{font-family:var(--font-m);font-size:8px;fill:var(--muted)} .k{fill:var(--ink);font-weight:600}</style>`;
+  A.months.forEach((m,k)=>{ const cx=cw*k+cw/2; s+=`<g><title>${m.n} · ${fmtI(m.mm)} mm${m.top?' · '+m.top.name+' '+Math.round(m.top.f*100)+'%'+(m.second?', '+m.second.name+' '+Math.round(m.second.f*100)+'%':''):''}</title>`;
+    s+=`<text x="${cx.toFixed(1)}" y="9" text-anchor="middle">${m.n}</text><circle cx="${cx.toFixed(1)}" cy="${cy}" r="${r}" fill="none" stroke="var(--line2)"/>`;
+    if(m.top){ const a=m.top.dir*Math.PI/180; const ux=-Math.sin(a), uy=Math.cos(a), px=Math.cos(a), py=Math.sin(a); // u: the way the rain travels (screen y down); p: across it
+      const f=v=>v.toFixed(1); const x0=cx-r*ux, y0=cy-r*uy, tx=cx+5*ux, ty=cy+5*uy, bx=tx-5*ux, by=ty-5*uy;
+      s+=`<line x1="${f(x0)}" y1="${f(y0)}" x2="${f(bx)}" y2="${f(by)}" stroke="#2F6FA8" stroke-width="2"/><path d="M${f(tx)},${f(ty)}L${f(bx+3*px)},${f(by+3*py)}L${f(bx-3*px)},${f(by-3*py)}Z" fill="#2F6FA8"/>`;
+      s+=`<text class="k" x="${cx.toFixed(1)}" y="${cy+r+11}" text-anchor="middle">${m.top.name}</text>`; }
+    const h=bh*m.mm/max; s+=`<rect x="${(cx-cw*0.3).toFixed(1)}" y="${(bar0+bh-h).toFixed(1)}" width="${(cw*0.6).toFixed(1)}" height="${h.toFixed(1)}" rx="1.5" fill="#2F6FA8" fill-opacity="0.35"/><text x="${cx.toFixed(1)}" y="${H-1}" text-anchor="middle">${fmtI(m.mm)}</text></g>`; });
+  return s+'</svg>'; }
+/* the four seasons: main direction and its share, the next one, and the season's rain */
+function seasonsSVG(){ const V=LAB.viz; const rows=[['Winter',[11,0,1]],['Spring',[2,3,4]],['Summer',[5,6,7]],['Fall',[8,9,10]]].map(([n,ms])=>{ const x=rainBySector(i=>ms.includes(mOf(i))); if(!x) return null; const [a,b]=x.ranked;
+    return {label:n,v:a.f,color:'#2F6FA8',text:a.name+' '+Math.round(a.f*100)+'%'}; }).filter(Boolean);
+  return V.hbars(rows,{key:'rain-seasons',title:'By season',max:1,w:190,labelW:46,rowH:30}); }
+/* the block at the top of the rain results */
+function whereFromHTML(){ const V=LAB.viz; const A=rainFrom(); const s=state();
+  if(!A) return `<h3>Where the rain comes from</h3>`+V.fig(rainRoseSVG(),'Assumed rain rose: no hourly weather loaded.');
+  const [a,b,c]=A.ranked; const quarter=A.sec.filter(x=>Math.abs(((x.dir-a.dir+540)%360)-180)<=45).reduce((t,x)=>t+x.f,0);
+  const off=Math.abs(((s.dir-a.dir+540)%360)-180);
+  return `<h3>Where the rain comes from</h3><p class="headline">Mostly from the <b>${WORD[a.name]}</b>: ${Math.round(a.f*100)}% of ${A.label==='the year'?'the year\'s':'the period\'s'} rain arrives on ${a.name} winds, ${Math.round(quarter*100)}% from ${a.name} ± 45°. Next ${b.name} ${Math.round(b.f*100)}%, ${c.name} ${Math.round(c.f*100)}%.</p>`
+    +(off>22.5?`<div class="rain-use">Design storm from ${s.dir}° <button type="button" class="btn small" data-rain-dir="${a.dir}">Use ${a.dir}° (${a.name})</button></div>`:'')
+    +V.row(V.fig(rainRoseSVG(),'Petal length: share of the rain from each direction. Colour: mean wind speed while it rains.'),V.fig(seasonsSVG(),'Bar: share of the season\'s rain from its main direction.'))
+    +V.fig(monthsSVG(A),'Arrow: where most of each month\'s rain comes from. Bar: the month\'s rain in mm.')
+    +`<p class="note">Wind direction during the wet hours of the CWEC2020 typical year at Vancouver Intl AP${A.calm>0.01?'; '+Math.round(A.calm*100)+'% falls in calm air':''}. The file has no hourly rain, so each month's rain is spread over its overcast, humid hours.</p>`; }
 function exposureSVG(r){ const V=LAB.viz; const faces={}; for(const f of r.faces) faces[f.o]={v:f.index,color:BAND_C[f.band],text:f.index.toFixed(0)+' · '+f.band}; return V.compass(faces,{key:'rain-exposure',title:'Driving-rain index by face · BS 8104 band',caption:'bar length = annual index; colour = sheltered, moderate, severe, very severe'}); }
 function html(){
   const s=state(); const {alpha}=angle(); const r=R; const V=LAB.viz; const Rann=C.rain.reduce((a,b)=>a+b,0);
   let h=`<h2>Rain ${LAB.sim.SW.mode==='advanced'?'<span class="tag adv">Design development</span>':'<span class="tag">Massing</span>'}</h2>`;
+  h+=whereFromHTML();
   const storm=kp('Design storm',s.dir+'° · '+s.speed.toFixed(1)+' m/s',s.drop+' · rain '+(alpha*180/Math.PI).toFixed(0)+'° from vertical');
   if(!r&&LAB.sim.SW.mode==='advanced'){ h+=`<div class="kpi">${storm}</div><p class="note">Run the rain study for the glass each façade zone's devices keep dry, the entrance canopy's shelter and the roof's gutters, cascades and storage.</p>`; return h; }
-  if(!r){ h+=`<div class="kpi">${storm}${kp('Annual rain',fmtI(Rann)+' mm','Vancouver Intl AP, mostly October to March')}${kp('Storm on the ground',((LAB.S.water.storm||80)*(s.dur||60)/60).toFixed(0)+' mm',s.dur+' min at '+(LAB.S.water.storm||80)+' mm/h')}</div>`+V.fig(rainRoseSVG(),'Vancouver\'s rain rides on south-easterly fronts; petal length is the share of annual rain, colour the mean wind speed in that sector.')+roofSection(null)+`<p class="note">Run the study to map the building's rain shadow, the wetted façades, the roof catchment and, with a terrain surface, where water pools on the site.</p>`; return h; }
+  if(!r){ h+=`<div class="kpi">${storm}${kp('Annual rain',fmtI(Rann)+' mm','Vancouver Intl AP, mostly October to March')}${kp('Storm on the ground',((LAB.S.water.storm||80)*(s.dur||60)/60).toFixed(0)+' mm',s.dur+' min at '+(LAB.S.water.storm||80)+' mm/h')}</div>`+roofSection(null)+`<p class="note">Run the study to map the building's rain shadow, the wetted façades, the roof catchment and, with a terrain surface, where water pools on the site.</p>`; return h; }
   const worst=r.faces.reduce((a,f)=>f.index>a.index?f:a,r.faces[0]); const p=r.pond;
   const dd=LAB.sim.SW.mode==='advanced';
   if(dd){ // the envelope in detail: glass the devices keep dry, entrance shelter, roof drainage; the site and exposure stay in Massing
@@ -166,8 +207,8 @@ function html(){
   h+=`<p class="headline">${readings(r)[0]}</p>`;
   h+=`<div class="kpi">${storm}${kp('Most exposed face',NAMES[worst.o],worst.band+' · index '+worst.index.toFixed(0)+' · '+Math.round(worst.wetShare*100)+'% wetted',worst.band==='sheltered'?'ok':(worst.band==='very severe'?'over':''))}${kp('Ground kept dry',fmtI(r.dry)+' m²',r.plazaTot?fmtI(r.dryPlaza)+' m² of it on plazas':'rain shadow of the building')}</div>`;
   h+=roofSection(r);
-  h+=V.row(V.fig(rainRoseSVG(),'Share of annual rain by wind sector; colour is the mean wind in that sector.'),V.fig(exposureSVG(r),'ISO 15927-3 annual index per face, read against the BS 8104 exposure bands.'));
-  h+=V.row(V.fig(wallChart(r),'Share of each face the storm wets, by height: upper floors catch two to three times the base.'),V.fig(V.hbars(r.faces.map(f=>({label:NAMES[f.o],v:f.storm,color:BAND_C[f.band],text:f.storm.toFixed(1)+' L/m²/h · '+Math.round(f.wetShare*100)+'% wetted'})),{key:'storm-catch',title:'Storm catch on each face',dec:1,labelW:52}),'Wind-driven rain on the face in the design storm (catch ratio 0.222·U·R^0.88 with wall factors by height).'));
+  h+=V.row(V.fig(exposureSVG(r),'ISO 15927-3 annual index per face, read against the BS 8104 exposure bands.'),V.fig(wallChart(r),'Share of each face the storm wets, by height: upper floors catch two to three times the base.'));
+  h+=V.fig(V.hbars(r.faces.map(f=>({label:NAMES[f.o],v:f.storm,color:BAND_C[f.band],text:f.storm.toFixed(1)+' L/m²/h · '+Math.round(f.wetShare*100)+'% wetted'})),{key:'storm-catch',title:'Storm catch on each face',dec:1,labelW:52}),'Wind-driven rain on the face in the design storm (catch ratio 0.222·U·R^0.88 with wall factors by height).');
   }
   if(dd&&r.shelter) h+=`<div class="kpi">${kp('Canopy keeps dry',r.shelter.canopy>0?r.shelter.dryCanopy.toFixed(1)+' m':'none',r.shelter.canopy>0?'of '+r.shelter.canopy+' m depth on the windward side':'entrances on the windward face will be wet',r.shelter.canopy>0&&r.shelter.dryCanopy<1.5?'over':'')}${kp('Podium keeps dry',r.shelter.podiumExt>0?r.shelter.podiumDry.toFixed(1)+' m':'none',r.shelter.podiumExt>0?'of '+r.shelter.podiumExt+' m':'no podium set')}${kp('On the parcel',fmtI(r.drySite)+' m²','ground kept dry')}</div>`;
   if(dd&&r.zones&&r.zones.length) h+=V.fig(V.hbars(r.zones.map(z=>({label:z.label,v:z.dryShare,color:z.facing?'#2F6FA8':'var(--chart-axis)',text:Math.round(z.dryShare*100)+'%'+(z.facing?'':' · not facing the storm')+(z.depth==null?' · double skin':'')})),{key:'glass-dry',title:'Glass kept dry by the façade zones',max:1,labelW:120}),'An overhang or balcony of depth D shelters D / tan α of the glass below it; fins and louvres do not shelter glass from rain.');
@@ -201,7 +242,7 @@ function reportData(){
     tables:[{title:'Driving rain by face',head:['Face','Façade m²','Annual index','BS 8104 band','Wetted in storm','Storm catch L/m²/h'],rows:r.faces.map(f=>[NAMES[f.o],fmt(f.area),f.index.toFixed(0),f.band,Math.round(f.wetShare*100)+'%',f.storm.toFixed(1)])}],
     notes:['Driving rain follows ISO 15927-3: an annual index per face from the rain rose and sector wind speeds (2/9 · v · r^(8/9) · cos θ), with wall factors rising from 0.2 at the base to 0.5 at the top of a tall wall, read against BS 8104 exposure bands (sheltered, moderate, severe, very severe). Storm catch uses the semi-empirical catch ratio 0.222 · U · R^0.88 for a rain intensity R.','The rain shadow is rendered: rain falling at the storm angle (wind speed over the drop terminal velocity: 2, 5 or 8 m/s for drizzle, steady and heavy rain) from the storm direction, with and without the building, its podium and canopy; the difference is the ground the building keeps dry. Wetted façade is the area the same vector reaches after neighbours and the building\'s own form, per face and floor.','Roof catchment, run-off, gutter outlets and edge cascades come from a flow-routing model of the exposed terraces and roof on a 1 m grid; yield uses 80% run-off; the cistern is the largest cumulative shortfall when wetter months water the planted terraces in drier ones.','Indicative early-design readings. Detailing a façade for driving rain needs hourly weather data and a façade-specific catch ratio; drainage design needs the local rainfall intensity-duration curves.'],
     overlay:'Blue ponds by depth and blue flow paths where run-off collects on the terrain; grey: ground the building keeps dry in the design storm.'};
-  try{ const V=LAB.viz; out.charts=[{svg:V.pdf(rainRoseSVG()),title:'Rain rose'},{svg:V.pdf(exposureSVG(r)),title:'Driving-rain index by face'},{svg:V.pdf(wallChart(r)),title:'Wetted façade by height'}]; }catch(e){ console.error(e); }
+  try{ const V=LAB.viz; const A=rainFrom(); out.charts=[{svg:V.pdf(rainRoseSVG()),title:'Rain by wind direction'}].concat(A?[{svg:V.pdf(monthsSVG(A)),title:'Where each month\'s rain comes from'}]:[]).concat([{svg:V.pdf(exposureSVG(r)),title:'Driving-rain index by face'},{svg:V.pdf(wallChart(r)),title:'Wetted façade by height'}]); }catch(e){ console.error(e); }
   { const RC=roofCollect(r); if(RC.area>0){ out.stats.unshift(['Roof and terraces collect a year',fmt(RC.annual)+' m³ ('+fmt(RC.area)+' m² at '+Math.round(ROOF_C*100)+'% run-off of '+fmt(RC.Rann)+' mm)'],['Collected in the design storm',fmt(RC.storm)+' m³ ('+RC.stormMM.toFixed(0)+' mm), peak '+RC.peakLs.toFixed(0)+' L/s'],['Collected per mm of rain',fmt(RC.perMm)+' L']); if(RC.flushShare!=null) out.stats.splice(3,0,['Share of toilet flushing it covers',Math.round(RC.flushShare*100)+'% for '+fmt(RC.people)+' people at '+FLUSH+' L per person per day']);
     out.tables.unshift({title:'What the roofs collect',head:['Surface','Area m²','m³ a year'],rows:RC.surfaces.map(x=>[x.name,fmt(x.area),fmt(x.m3)]).concat([['Total',fmt(RC.area),fmt(RC.annual)]])},{title:'Collected by month',head:['Month','Rain mm','m³','L per day'],rows:RC.monthly.map(x=>[x.m,String(Math.round(x.mm)),fmt(x.m3),fmt(x.perDay)])});
     try{ out.charts=(out.charts||[]).concat([{svg:LAB.viz.pdf(roofSurfacesSVG(RC)),title:'What each roof surface collects'},{svg:LAB.viz.pdf(roofMonthsSVG(RC)),title:'Collected by month'}]); }catch(e){} out.notes.push('Roof collection: area of the main roof and every exposed terrace × annual rainfall ('+fmt(RC.Rann)+' mm, Vancouver Intl AP normals) × '+Math.round(ROOF_C*100)+'% run-off, the share left after the first flush, evaporation and splash. Toilet flushing assumes '+FLUSH+' L per person per day for the occupants of the energy model.'); } }
@@ -221,6 +262,7 @@ function reportData(){
 function buildUI(){
   const s=state(); LAB.controlsFor($('params-rain'),P,'rn',()=>state(),()=>{ LAB.syncFor($('params-rain'),P,'rn',state()); if(LAB.sim.markStale) LAB.sim.markStale('rain'); if(R) renderNote(); });
   LAB.syncFor($('params-rain'),P,'rn',s);
+  document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('[data-rain-dir]'); if(!b) return; const st=state(); st.dir=+b.dataset.rainDir; LAB.syncFor($('params-rain'),P,'rn',st); if(LAB.sim.markStale) LAB.sim.markStale('rain'); renderNote(); });
   const host=$('rain-presets'); C.winds.forEach(w=>{ const b=document.createElement('button'); b.type='button'; b.className='chip'; b.textContent=w.label; b.addEventListener('click',()=>{ const st=state(); st.dir=w.dir; st.speed=Math.max(st.speed,w.speed); LAB.syncFor($('params-rain'),P,'rn',st); if(LAB.sim.markStale) LAB.sim.markStale('rain'); if(LAB.sim.setMode){ LAB.sim.setMode('rain'); LAB.sim.runCurrent(true); } }); host.appendChild(b); });
 }
 function renderNote(){ if(LAB.sim&&LAB.sim.rerenderRain) LAB.sim.rerenderRain(); }
