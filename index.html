@@ -204,7 +204,7 @@ details summary::-webkit-details-marker{display:none}
 .fig[data-fig]{cursor:pointer;transition:border-color .15s,box-shadow .15s}
 .fig[data-fig]:hover,.fig[data-fig]:focus-visible{border-color:var(--accent);box-shadow:0 1px 6px rgba(0,0,0,.08);outline:none}
 .fig[data-fig] figcaption::after{content:'Explain ↗';float:right;margin-left:8px;color:var(--accent);font-weight:500}
-.review.sheet>:not(.fig-sheet){display:none}
+.review.fig-open>:not(.fig-sheet){display:none} /* an explainer open: it takes the right panel (not .sheet, which is the 2-D drawing overlay) */
 .fig-sheet{max-width:720px}
 .fig-sheet .fs-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px}
 .fig-sheet .fs-head h2{margin:0}

@@ -49,8 +49,8 @@ const D={
 };
 function render(key,figHTML,caption){ const d=D[key]; const sheet=document.getElementById('fig-sheet'); if(!sheet) return; const list=a=>`<ul>${(a||[]).map(x=>`<li>${x}</li>`).join('')}</ul>`;
   sheet.innerHTML=`<div class="fs-head"><button type="button" class="btn" id="fig-back">← Back to the review</button><h2>${d?d.t:'Figure'}</h2></div><div class="fs-fig">${figHTML}</div>${caption?`<p class="fs-cap">${caption}</p>`:''}`+(d?`<h3>What it shows</h3><p>${d.what}</p><h3>How to read it</h3>${list(d.read)}<h3>How it is computed</h3><p>${d.how}</p><h3>What good looks like</h3><p>${d.good}</p><h3>Design moves</h3>${list(d.moves)}<h3>Sources</h3>${list(d.refs)}`:'<p>No note for this figure yet.</p>');
-  const rv=sheet.parentElement; sheet.dataset.scroll=rv.scrollTop; rv.classList.add('sheet'); sheet.hidden=false; rv.scrollTop=0; document.getElementById('fig-back').addEventListener('click',close); document.getElementById('fig-back').focus(); }
-function close(){ const sheet=document.getElementById('fig-sheet'); if(!sheet||sheet.hidden) return; const rv=sheet.parentElement; sheet.hidden=true; rv.classList.remove('sheet'); rv.scrollTop=+sheet.dataset.scroll||0; }
+  const rv=sheet.parentElement; sheet.dataset.scroll=rv.scrollTop; rv.classList.add('fig-open'); sheet.hidden=false; rv.scrollTop=0; document.getElementById('fig-back').addEventListener('click',close); document.getElementById('fig-back').focus(); }
+function close(){ const sheet=document.getElementById('fig-sheet'); if(!sheet||sheet.hidden) return; const rv=sheet.parentElement; sheet.hidden=true; rv.classList.remove('fig-open'); rv.scrollTop=+sheet.dataset.scroll||0; }
 function open(fig){ const key=fig.dataset.fig; const svg=fig.querySelector('.figsvg'); const cap=fig.querySelector('figcaption'); render(key,svg?svg.innerHTML:'',cap?cap.innerHTML:''); }
 document.addEventListener('click',e=>{ const f=e.target.closest('figure.fig[data-fig]'); if(f&&!e.target.closest('a,button')) open(f); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') close(); if(e.key==='Enter'&&e.target.matches&&e.target.matches('figure.fig[data-fig]')) open(e.target); });
