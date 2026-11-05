@@ -3,7 +3,7 @@
 """
 Sun & Wind Link - a Rhino 7 / Rhino 8 panel that prepares a model for Sun & Wind Studio and keeps the tool in step with it.
 
-1. Layers   Creates the layers the studies read (SW Tower and its parts, SW Shading, SW PV, SW Context, SW Terrain),
+1. Layers   Creates the layers the studies read (Tower and its parts, Shading, PV, Context, Terrain),
             or maps the layers you already have onto them. Moves selected objects onto a Sun & Wind layer.
 2. Check    Scans what will be sent: units, closed volumes, floor plates, ground level, unmapped layers, size.
 3. Link     Serves the model on http://127.0.0.1:<port> (and, when this file sits in the tool's rhino/ folder,
@@ -55,21 +55,21 @@ ALLOWED_ORIGINS = [             # sites allowed to read the model from this comp
 
 # key, label, role, part, standard layer, colour (the tool's part colours)
 TARGETS = [
-    ('tower',     'Tower: sort parts by shape', 'massing', None,        'SW Tower',                  (169, 178, 188)),
-    ('floor',     'Tower: floor plates',        'massing', 'floor',     'SW Tower::Floor plates',    (79, 124, 172)),
-    ('ground',    'Tower: ground floor',        'massing', 'ground',    'SW Tower::Ground floor',    (140, 91, 144)),
-    ('facade',    'Tower: facade',              'massing', 'facade',    'SW Tower::Facade',          (126, 138, 150)),
-    ('window',    'Tower: windows',             'massing', 'window',    'SW Tower::Windows',         (95, 168, 211)),
-    ('roof',      'Tower: roof',                'massing', 'roof',      'SW Tower::Roof',            (208, 106, 75)),
-    ('ceiling',   'Tower: ceilings',            'massing', 'ceiling',   'SW Tower::Ceilings',        (217, 164, 65)),
-    ('structure', 'Tower: structure',           'massing', 'structure', 'SW Tower::Structure',       (68, 81, 94)),
-    ('core',      'Tower: core',                'massing', 'core',      'SW Tower::Core',            (176, 125, 79)),
-    ('stair',     'Tower: stairs',              'massing', 'stair',     'SW Tower::Stairs',          (78, 154, 91)),
-    ('mass',      'Tower: massing volume',      'massing', 'mass',      'SW Tower::Massing volume',  (150, 160, 172)),
-    ('shading',   'Shading devices',            'shading', None,        'SW Shading',                (224, 138, 62)),
-    ('pv',        'PV surfaces',                'pv',      None,        'SW PV',                     (46, 64, 112)),
-    ('context',   'Site context',               'context', None,        'SW Context',                (196, 200, 204)),
-    ('terrain',   'Terrain',                    'terrain', None,        'SW Terrain',                (150, 172, 128)),
+    ('tower',     'Tower: sort parts by shape', 'massing', None,        'Tower',                  (169, 178, 188)),
+    ('floor',     'Tower: floor plates',        'massing', 'floor',     'Tower::Floor plates',    (79, 124, 172)),
+    ('ground',    'Tower: ground floor',        'massing', 'ground',    'Tower::Ground floor',    (140, 91, 144)),
+    ('facade',    'Tower: facade',              'massing', 'facade',    'Tower::Facade',          (126, 138, 150)),
+    ('window',    'Tower: windows',             'massing', 'window',    'Tower::Windows',         (95, 168, 211)),
+    ('roof',      'Tower: roof',                'massing', 'roof',      'Tower::Roof',            (208, 106, 75)),
+    ('ceiling',   'Tower: ceilings',            'massing', 'ceiling',   'Tower::Ceilings',        (217, 164, 65)),
+    ('structure', 'Tower: structure',           'massing', 'structure', 'Tower::Structure',       (68, 81, 94)),
+    ('core',      'Tower: core',                'massing', 'core',      'Tower::Core',            (176, 125, 79)),
+    ('stair',     'Tower: stairs',              'massing', 'stair',     'Tower::Stairs',          (78, 154, 91)),
+    ('mass',      'Tower: massing volume',      'massing', 'mass',      'Tower::Massing volume',  (150, 160, 172)),
+    ('shading',   'Shading devices',            'shading', None,        'Shading',                (224, 138, 62)),
+    ('pv',        'PV surfaces',                'pv',      None,        'PV',                     (46, 64, 112)),
+    ('context',   'Site context',               'context', None,        'Context',                (196, 200, 204)),
+    ('terrain',   'Terrain',                    'terrain', None,        'Terrain',                (150, 172, 128)),
     ('ignore',    'Ignore: never send',         'ignore',  None,        None,                        None),
 ]
 T = dict((t[0], t) for t in TARGETS)
@@ -78,6 +78,9 @@ SHORT = {'tower': 'Tower (auto)', 'floor': 'Floor plates', 'ground': 'Ground flo
          'shading': 'Shading', 'pv': 'PV', 'context': 'Context', 'terrain': 'Terrain', 'ignore': 'Ignore'}
 KEYS = [t[0] for t in TARGETS]
 STD_PATHS = dict((t[4].lower(), t[0]) for t in TARGETS if t[4])
+# models set up by v1.0 used 'SW Tower', 'SW Shading', ...: still recognised, and Create layers renames them
+LEGACY_ROOTS = dict(('sw ' + t[4].lower(), t[4]) for t in TARGETS if t[4] and '::' not in t[4])
+STD_PATHS.update(dict(('sw ' + k, v) for k, v in list(STD_PATHS.items())))
 
 # name rules for Auto-map, checked on the layer's own name first, then on its full path
 RULES = [
@@ -384,7 +387,7 @@ class Model(object):
                         'Everything is scaled by %g on the way out. Nothing changes in Rhino.' % c['scale']))
         if not tower:
             out.append(('error', 'No tower', [], None,
-                        'Put the tower on SW Tower, or set one of your layers to a tower part. Every study needs a massing.'))
+                        'Put the tower on the Tower layer, or set one of your layers to a tower part. Every study needs a massing.'))
         if (by.get('shading') or by.get('pv')) and not tower:
             out.append(('error', 'Shading and PV need a tower', ids(by.get('shading', []) + by.get('pv', [])), None,
                         'Devices and panels attach to the tower in the same model.'))
@@ -837,7 +840,7 @@ class Panel(object):
             self.move_dd.Items.Add(SHORT[t[0]])
         self.move_dd.SelectedIndex = 0
         layers_page = vbox([
-            hrow([button('Create layers', self.create_layers, 'Add the SW Tower, Shading, PV, Context and Terrain layers.'),
+            hrow([button('Create layers', self.create_layers, 'Add the Tower, Shading, PV, Context and Terrain layers.'),
                   button('Auto-map', self.auto_map, 'Set your layers by their names, e.g. A-GLAZ to Windows.'), None]),
             self.layer_box,
             hrow([label('Selected to', muted=True), self.move_dd, button('Move', self.move_selected, 'Move the selected objects onto that layer.')], scale=1),
@@ -910,7 +913,7 @@ class Panel(object):
                 continue
             key, inh = targets.get(L.Index, (None, False))
             own = self.link.model.stored_key(L)
-            if counts.get(L.Index):  # only layers with visible objects; empty SW layers stay out of the way
+            if counts.get(L.Index):  # only layers with visible objects; empty standard layers stay out of the way
                 rows.append((L, own, key if inh else None))
         rows.sort(key=lambda r: r[0].FullPath.lower())
         table = forms.TableLayout()
@@ -986,13 +989,33 @@ class Panel(object):
 
     def create_layers(self):
         doc = self.link.model.doc()
+        renamed = self.rename_legacy()
         before = doc.Layers.Count
         for t in TARGETS:
             if t[4]:
                 self.ensure_layer(t[0])
         self.refresh_layers()
         added = doc.Layers.Count - before
-        self.note('Layers ready' if not added else '%d layers added' % added)
+        parts = (['%d added' % added] if added else []) + (['%d renamed' % renamed] if renamed else [])
+        self.note('Layers: ' + ', '.join(parts) if parts else 'Layers ready')
+
+    def rename_legacy(self):
+        """'SW Tower' and friends (v1.0) become 'Tower' etc., unless a layer of the new name already exists."""
+        doc = self.link.model.doc()
+        n = 0
+        for L in list(doc.Layers):
+            if L.IsDeleted or L.ParentLayerId != System.Guid.Empty:
+                continue
+            new = LEGACY_ROOTS.get(L.Name.lower())
+            if new and doc.Layers.FindByFullPath(new, -1) < 0:
+                L.Name = new
+                self.link.mute = True
+                try:
+                    doc.Layers.Modify(L, L.Index, True)
+                finally:
+                    self.link.mute = False
+                n += 1
+        return n
 
     def auto_map(self):
         doc = self.link.model.doc()

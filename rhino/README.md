@@ -39,21 +39,21 @@ Short notes after an action, such as *5 mapped* or *Moved 3 to Windows*, appear 
 
 | Layer | Sent as | Use it for |
 | --- | --- | --- |
-| `SW Tower` | Tower massing, parts sorted by shape | A tower you haven't split into parts |
-| `SW Tower::Floor plates` | Floor plates | Slabs, one per level. They set the storeys and plate outlines. |
-| `SW Tower::Ground floor` | Ground floor | The ground-floor plate. Its top sets the ground level. |
-| `SW Tower::Facade` | Façade | Opaque cladding and spandrels, kept out of the solid |
-| `SW Tower::Windows` | Windows | Glazing. With the façade it sets each face's window-to-wall ratio, and it sets sills and heads. |
-| `SW Tower::Roof` | Roof | |
-| `SW Tower::Ceilings` | Ceilings | They set the ceiling heights used by the daylight study |
-| `SW Tower::Structure` | Structure | Columns and beams, kept out of the solid |
-| `SW Tower::Core` | Core | It sets the core share |
-| `SW Tower::Stairs` | Stairs | Kept out of the solid |
-| `SW Tower::Massing volume` | Massing volume | Closed solids that make up the mass |
-| `SW Shading` | Shading devices (Design development) | Fins, louvres, overhangs, canopies |
-| `SW PV` | PV surfaces (Design development) | |
-| `SW Context` | Site context | Neighbours, plazas, streets. Sublayers are fine. |
-| `SW Terrain` | Terrain | The ground surface. The ground at the tower becomes 0 m. |
+| `Tower` | Tower massing, parts sorted by shape | A tower you haven't split into parts |
+| `Tower::Floor plates` | Floor plates | Slabs, one per level. They set the storeys and plate outlines. |
+| `Tower::Ground floor` | Ground floor | The ground-floor plate. Its top sets the ground level. |
+| `Tower::Facade` | Façade | Opaque cladding and spandrels, kept out of the solid |
+| `Tower::Windows` | Windows | Glazing. With the façade it sets each face's window-to-wall ratio, and it sets sills and heads. |
+| `Tower::Roof` | Roof | |
+| `Tower::Ceilings` | Ceilings | They set the ceiling heights used by the daylight study |
+| `Tower::Structure` | Structure | Columns and beams, kept out of the solid |
+| `Tower::Core` | Core | It sets the core share |
+| `Tower::Stairs` | Stairs | Kept out of the solid |
+| `Tower::Massing volume` | Massing volume | Closed solids that make up the mass |
+| `Shading` | Shading devices (Design development) | Fins, louvres, overhangs, canopies |
+| `PV` | PV surfaces (Design development) | |
+| `Context` | Site context | Neighbours, plazas, streets. Sublayers are fine. |
+| `Terrain` | Terrain | The ground surface. The ground at the tower becomes 0 m. |
 
 **Your own layers.** The table lists every layer that has objects. Each one gets a drop-down, and choosing a target there stores it:
 

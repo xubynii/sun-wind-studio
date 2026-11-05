@@ -59,10 +59,10 @@ async function parse3DM(buf){
 
 /* ---------- import dialog: layers → massing / shading / pv / context / ignore ---------- */
 let pending=null; let siteMode=false; const ID=k=>siteMode?({status:'site-io-status',layers:'site-import-layers',dialog:'site-import-dialog',replace:'c-site-replace',name:'site-file-name'})[k]:({status:'io-status',layers:'import-layers',dialog:'import-dialog',replace:'c-import-replace',name:'file-name'})[k];
-/* Sun & Wind Link (the Rhino plugin in rhino/) sets up these layers and sends each object's role and part outright;
+/* Sun & Wind Link (the Rhino plugin in rhino/) sets up the layers Tower::<part>, Shading, PV, Context and Terrain and sends each object's role and part outright;
    a plain .3dm saved with the same layers (or with layers the plugin mapped, stored as the layer user text sw.target) reads the same way. */
 const SW_KEYS={tower:['massing',null],floor:['massing','floor'],ground:['massing','ground'],facade:['massing','facade'],window:['massing','window'],roof:['massing','roof'],ceiling:['massing','ceiling'],structure:['massing','structure'],core:['massing','core'],stair:['massing','stair'],mass:['massing','mass'],shading:['shading',null],pv:['pv',null],context:['context',null],terrain:['terrain',null],ignore:['ignore',null]};
-const SW_ROOTS={'sw tower':'tower','sw shading':'shading','sw pv':'pv','sw context':'context','sw terrain':'terrain','sw ignore':'ignore'};
+const SW_ROOTS={tower:'tower',shading:'shading',pv:'pv',context:'context',terrain:'terrain','sw tower':'tower','sw shading':'shading','sw pv':'pv','sw context':'context','sw terrain':'terrain','sw ignore':'ignore'}; // 'SW …' from plugin v1.0
 const SW_LEAVES={'floor plates':'floor','ground floor':'ground','facade':'facade','façade':'facade','windows':'window','roof':'roof','ceilings':'ceiling','structure':'structure','core':'core','stairs':'stair','massing volume':'mass'};
 function swKey(k){ const t=SW_KEYS[k]; return t?{role:t[0],part:t[1]}:null; }
 function swTarget(path){ const seg=String(path||'').split('::').map(x=>x.trim().toLowerCase()); const root=SW_ROOTS[seg[0]]; if(!root) return null;
