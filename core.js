@@ -1199,16 +1199,7 @@ LAB.boot=function(){
 LAB.tabs={
   show(name){ if(!document.querySelector('#tabs button[data-tab="'+name+'"]')) name=CFG.tab||'site';
     document.querySelectorAll('#tabs button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===name))); document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===name)); try{ localStorage.setItem(KEY+':tab',name); }catch(e){}
-    LAB.tabs.dock(name);
     for(const fn of LAB.hooks.tab){ try{ fn(name); }catch(e){ console.error(e); } } },
-  /* analysis tabs open in the right panel, settings above the results; Model, Site, Program and Report stay in the left panel */
-  ANALYSIS:['sun','wind','rain','eff','strat','daylight','vent','energy'], home:new Map(),
-  dock(name){ const host=document.getElementById('rv-tab'); if(!host) return; const ana=LAB.tabs.ANALYSIS.includes(name); const was=document.body.classList.contains('ana');
-    document.body.classList.toggle('ana',ana);
-    for(const sec of [...host.children]){ if(ana&&sec.dataset.tab===name) continue; const c=LAB.tabs.home.get(sec); if(c) c.parentNode.insertBefore(sec,c); }
-    if(ana){ const sec=document.querySelector('.panel .tab[data-tab="'+name+'"]'); if(sec){ if(!LAB.tabs.home.has(sec)){ const c=document.createComment('tab '+name); sec.parentNode.insertBefore(c,sec); LAB.tabs.home.set(sec,c); } host.appendChild(sec); }
-      const rv=host.closest('.review'); if(rv) rv.scrollTop=0; }
-    if(ana!==was){ window.dispatchEvent(new Event('resize')); } },
   showTest(name){ document.querySelectorAll('#subtabs button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.test===name))); document.querySelectorAll('.test').forEach(t=>t.classList.toggle('active',t.dataset.test===name)); try{ localStorage.setItem(KEY+':test',name); }catch(e){} },
   init(){
     document.querySelectorAll('#tabs button').forEach(b=>b.addEventListener('click',()=>LAB.tabs.show(b.dataset.tab)));
