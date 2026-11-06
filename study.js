@@ -2071,10 +2071,35 @@ function renderPlan(){
   host.innerHTML=planSVG(R,layer,extra); $('plan-legend').innerHTML=legend; $('plan-stats').innerHTML=stats; $('plan-note').textContent=note; if(LAB.help) LAB.help.apply($('plan-block'));
   const thL=layer==='temp'||layer==='loss'; const why=layer==='flow'&&extra?(extra.why||''):(thL&&!extra?'The hourly weather is not loaded yet':''); const fsig=layer==='flow'&&extra?flowCtlHTML(f,R,extra):(thL&&extra?thermCtlHTML(layer):'');
   if(fsig){ const d=document.createElement('div'); d.className='flow-ctl'; d.innerHTML=fsig; chips.appendChild(d); bindPlanCtl(d); }
-  PLAN_OVL=!['sun','wind','energy'].includes(focusOf())?null:{f,layer,set,why,off:!!SW.planOvlOff,html:SW.planOvlOff?'':planCells(R,layer,extra,true),flow:layer==='flow'?extra:null,th:thL?extra:null,node:null,sig:pk+'|'+layer+'|'+!!SW.planOvlOff+'|'+why+'|'+fsig,ctl:fsig}; ppResults(); LAB.requestRender();
+  planProbeFn=planProbe(R,layer,extra); hideProbe();
+  PLAN_OVL=!['sun','wind','energy'].includes(focusOf())?null:{f,layer,set,why,off:!!SW.planOvlOff,html:SW.planOvlOff?'':(planCells(R,layer,extra,true)||'<g/>'),flow:layer==='flow'?extra:null,th:thL?extra:null,node:null,sig:pk+'|'+layer+'|'+!!SW.planOvlOff+'|'+why+'|'+fsig,ctl:fsig}; ppResults(); LAB.requestRender();
 }
 /* the viewport plan's result layer: chips to pick it (or turn it off) and a legend, in the floating plan panel */
 let PLAN_OVL=null;
+/* ---------- hover readout: what the shown plan layer says about one 1 m cell of the floor ---------- */
+let planProbeFn=null;
+function planProbe(R,layer,extra){ const f=R.f, m=f.mask, nx=m.nx; const pc=v=>Math.round(v*100)+'%';
+  const lit=new Map(), no=new Set(); if(layer==='sun'){ for(let q=0;q<R.lit.length;q+=3) lit.set(R.lit[q+1]*nx+R.lit[q],R.lit[q+2]); for(let q=0;q<R.litNo.length;q+=2) no.add(R.litNo[q+1]*nx+R.litNo[q]); }
+  const zoneAt=k=>{ const T=extra; if(!T||!T.zones) return null; const id=T.zid[k]; return id<0?null:T.zones.find(z=>z.idx===id)||null; };
+  const facade=(lx,ly)=>{ if(layer!=='loss'||!extra||!extra.zones) return null; for(const e of edgesOf(f)){ const dx=lx-e.mx, dy=ly-e.my, u=dx*e.ux+dy*e.uy, v=dx*e.ox+dy*e.oy; if(Math.abs(u)<=e.L/2&&v>=0&&v<=1.6){ const z=extra.zones.find(q=>q.key===e.o); if(z&&z.fac) return {v:z.lossFac.toFixed(0)+' kWh/m² of façade',t:NAMES[e.o]+' face · heat lost through glass and wall a year',c:rampLoss(z.lossFac/Math.max(1e-6,...extra.zones.map(q=>q.lossFac))),cx:null}; } } return null; };
+  return (lx,ly)=>{ const fr=facade(lx,ly); if(fr) return fr; const ix=Math.floor(lx-m.x0), iy=Math.floor(ly-m.y0); if(ix<0||iy<0||ix>=nx||iy>=m.ny) return null; const x=m.x0+ix+0.5, y=m.y0+iy+0.5;
+    const cx=m.x0+ix, cy=m.y0+iy, out=(v,t,c)=>({v,t,c,cx,cy});
+    if(!(x<=f.w/2&&y<=f.d/2&&m.cells[iy*nx+ix])) return null;
+    if(Math.abs(x-R.cc.x)<=R.ch&&Math.abs(y-R.cc.y)<=R.ch) return out('Core','lifts, stairs and shafts',null);
+    const k=iy*nx+ix, st=(extra&&extra.step)||1, ks=(iy-iy%st)*nx+(ix-ix%st);
+    if(layer==='sun'){ if(!R.sunUp) return out('Sun down','no direct sun at this hour','var(--muted)'); const t=lit.get(k); if(t!=null) return out('Sun '+pc(t),'reaches the floor through the device','var(--sun)'); return no.has(k)?out('Shaded','the device blocks the sun here','var(--muted)'):out('No sun','the sun does not reach this spot','var(--muted)'); }
+    if(layer==='lux'&&extra){ const v=extra.lux[k]||0; return out(fmtI(v)+' lux',(v>=3000?'glare risk':v>=300?'enough to work by':'too dim to work by')+' · '+monthHour().label,rampLux(v)); }
+    if(layer==='da'&&extra){ const v=extra.da[ks]||0; return out(pc(v)+' of hours',(v>=0.5?'counts for sDA':'under 50%, does not count')+' · '+extra.target+' lux',rampDA(v)); }
+    if(layer==='df'&&extra){ const v=extra.df[ks]||0; return out('DF '+(v*100).toFixed(1)+'%',v>=0.05?'over-lit':v>=0.02?'well daylit':v>=0.01?'dim':'dark, needs electric light',rampDF(v)); }
+    if(layer==='ase'&&extra){ const v=extra.hrs[ks]||0, thr=Math.round(extra.thr); return out(fmtI(v)+' h of sun',v>thr?'over '+thr+' h, counts against ASE':'under '+thr+' h, fine',rampASE(v)); }
+    if(layer==='reach'){ const d=R.near[k], lim=R.mode==='cross'?R.limCross:R.mode==='single'?R.limSingle:R.limStack; if(d<=0) return out('No opening','no operable window reaches here',rampReach(99)); return out(d+' m to a window',d<=8?'within 8 m · ASHRAE 62.1':d<=lim?'within the '+lim+' m depth rule':'beyond the '+lim+' m depth rule',rampReach(d<=8?1:d<=lim?9:99)); }
+    if(layer==='flow'&&extra){ const F=extra; if(!F.on) return out('Windows closed',(F.why||'no natural air at this wind').replace(/^Windows closed:\s*/i,''),null); if(!F.fluid[k]) return null; const v=F.spd[k]; return out(v.toFixed(2)+' m/s',v<0.05?'still air, mixes least':v<0.25?'gentle air movement':'noticeable draught',v<F.uRef*0.05?'var(--panel2)':'#7FB8C6'); }
+    if(layer==='temp'&&extra){ const z=zoneAt(k); if(!z) return null; const TH=SW.therm||{};
+      if(TH.when==='time'){ const t=mhAvg(z.To); return out(t.toFixed(1)+' °C',z.name+' · '+monthHour().label,rampT(t)); }
+      if(TH.when==='cold'||TH.when==='hot'){ const M=thermMoments(); if(!M) return null; const t=z.To[M[TH.when].k]; return out(t.toFixed(1)+' °C',z.name+' · '+M[TH.when].label,rampT(t)); }
+      const n=z.occN||1; return out(pc(z.bins[2]/n)+' comfortable',z.name+' · '+pc((z.bins[0]+z.bins[1])/n)+' cold · '+pc((z.bins[3]+z.bins[4])/n)+' hot',rampComfort(z)); }
+    if(layer==='loss'&&extra){ const z=zoneAt(k); if(!z) return null; return out((z.heat/z.area).toFixed(0)+' kWh/m²',z.name+' · heating a year'+(z.fac?' · façade loses '+z.lossFac.toFixed(0)+' kWh/m²':''),zoneColor(extra,z,'loss')); }
+    return null; }; }
 const OVL_KEY={da:[rampDA,[0,0.25,0.5,0.75,1],['0%','50%','100%']],df:[rampDF,[0,0.01,0.02,0.035,0.05],['0','2%','5%+']],ase:[rampASE,[0,125,250,375,500],['0 h','250 h','500 h+']]};
 function ppResults(){ const host=document.getElementById('pp-res'); if(!host||!PLAN_OVL) return; if(host.dataset.sig===PLAN_OVL.sig) return; host.dataset.sig=PLAN_OVL.sig;
   const {set,layer,off}=PLAN_OVL; let h='<div class="pp-chips">'+set.map(([k,n])=>`<button type="button" data-ovl="${k}" aria-pressed="${!off&&k===layer}">${n}</button>`).join('')+`<button type="button" data-ovl="off" aria-pressed="${off}">Off</button></div>`;
@@ -2279,6 +2304,19 @@ window.addEventListener('keydown',e=>{ if(!massSel) return; const t=e.target; if
   if(mx||my){ S.posX=clamp(S.posX+mx,P.posX); S.posY=clamp(S.posY+my,P.posY); } if(rot) S.rotDeg=clamp(S.rotDeg+rot*(e.shiftKey?15:5),P.rotDeg);
   LAB.update(); });
 LAB.hooks.afterUpdate.push(()=>{ if(massSel) refreshMassSel(); });
+/* the readout follows the pointer over either plan; the cell under it is outlined */
+
+function probeTip(){ let t=document.getElementById('plan-probe'); if(!t){ t=document.createElement('div'); t.id='plan-probe'; t.className='probe-tip'; t.hidden=true; document.body.appendChild(t); } return t; }
+function hideProbe(){ const t=document.getElementById('plan-probe'); if(t) t.hidden=true; document.querySelectorAll('.probe-cell').forEach(n=>n.remove()); }
+function showProbe(g,e){ if(!g||!planProbeFn||!g.isConnected){ hideProbe(); return; } const M=g.getScreenCTM(); if(!M){ hideProbe(); return; }
+  const p=new DOMPoint(e.clientX,e.clientY).matrixTransform(M.inverse()); const r=planProbeFn(p.x,p.y); if(!r){ hideProbe(); return; }
+  let mk=g.querySelector(':scope > .probe-cell'); if(!mk){ hideProbe(); mk=document.createElementNS(NS,'rect'); mk.setAttribute('class','probe-cell'); mk.setAttribute('width','1'); mk.setAttribute('height','1'); g.appendChild(mk); }
+  if(r.cx==null) mk.setAttribute('display','none'); else { mk.removeAttribute('display'); mk.setAttribute('x',r.cx); mk.setAttribute('y',r.cy); }
+  const t=probeTip(); t.innerHTML='<b>'+(r.c?'<i style="background:'+r.c+'"></i>':'')+r.v+'</b><small>'+r.t+'</small>'; t.hidden=false;
+  const w=t.offsetWidth, h=t.offsetHeight; let x=e.clientX+16, y=e.clientY+16; if(x+w>innerWidth-8) x=e.clientX-16-w; if(y+h>innerHeight-8) y=e.clientY-16-h; t.style.left=Math.max(8,x)+'px'; t.style.top=Math.max(8,y)+'px'; }
+vpEl.addEventListener('pointermove',e=>{ if(e.buttons||!adv()||!planActive()||!PLAN_OVL||PLAN_OVL.off||!PLAN_OVL.node||PLAN_OVL.f!==planFloor()||PLAN.addGrid||(e.target.closest&&e.target.closest('.viewtools,.clip-panel,.keyplan,.secprog,.abar,.mass-hint,#planpanel'))){ hideProbe(); return; } showProbe(PLAN_OVL.node,e); });
+vpEl.addEventListener('pointerleave',hideProbe); vpEl.addEventListener('pointerdown',hideProbe);
+{ const ph=$('plan'); if(ph){ ph.addEventListener('pointermove',e=>{ const g=ph.querySelector('svg > g'); showProbe(g,e); }); ph.addEventListener('pointerleave',hideProbe); } }
 LAB.sim={init(){ initState(); buildUI(); placeControls(); syncGeometry(); updateGeomInfo(); renderSky(); applySunView(); if(LAB.S.impact.mode!=='sun'&&LAB.S.impact.mode!=='wind') setMode('sun'); else runCurrent(false); rerender(); if(adv()) setTimeout(()=>phaseView('advanced'),0);
     setTimeout(()=>autoRun(0),900); },
   showParts, showExploded, framePreview, applyModelWWR, sunPos, runCurrent, runSunStudy, runWindStudy, setMode, setStudioMode, reportData, periodInfo, roseFor, DATES, STRATS, solarStudy, band, ventStudy, daylightTower, daylightTowerCached, daylightFloor, aseFloor, aseTower, ventTowerQuick, planStudy, terraceWind, windProfile, zoneFor, zoneGlazing, energyChanged, exposurePass, setOverlay, dni, terrainDEM, towerRaster, plazaCellsAt, buildSiteRaster:()=>{ if(!siteRaster) buildSiteRaster(); return siteRaster; }, DOM,
