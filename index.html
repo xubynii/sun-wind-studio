@@ -144,6 +144,7 @@ td .dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right
 .rlink-row{display:flex;align-items:center;gap:8px;font-size:12px}
 .rlink-row input{width:72px;padding:4px 6px;font:inherit;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)}
 #rlink-status.bad{color:#C8553D}
+#tdt-status.bad{color:#C8553D}
 td.why{color:var(--muted);font-size:11.5px;line-height:1.35}
 .tbl-wrap{overflow-x:auto}
 .warn{margin:10px 0 0;padding:8px 10px;background:var(--warn-bg);color:var(--warn);border-radius:6px;font-size:12px;line-height:1.4}
@@ -450,6 +451,10 @@ body[data-mode="advanced"][data-tab="daylight"] .tbar,body[data-mode="advanced"]
           <div class="checks one"><label class="check" for="rlink-keep"><input type="checkbox" id="rlink-keep" checked><span>Keep my placement on the site between updates</span></label></div>
           <p class="io-status" id="rlink-status" aria-live="polite">Not connected.</p>
         </details>
+        <details class="rlink" id="tdt-link" open hidden><summary><span class="rdot" id="tdt-dot" data-state="off" aria-hidden="true"></span>From Tower Design Toolkit</summary>
+          <p class="rlink-lead">This model came from <a href="https://ruijieliu6.github.io/tower-design-toolkit/" target="_blank" rel="noopener">Tower Design Toolkit</a>, window to window in this browser (nothing uploaded). Press <b>Send to Sun &amp; Wind Studio</b> there again after a change to update it here.</p>
+          <p class="io-status" id="tdt-status" aria-live="polite"></p>
+        </details>
         <div id="import-dialog" hidden>
           <h3>Layers found</h3>
           <div class="tbl-wrap"><table id="import-layers"></table></div>
@@ -695,6 +700,7 @@ body[data-mode="advanced"][data-tab="daylight"] .tbar,body[data-mode="advanced"]
 <script src="io.js"></script>
 <script src="parts.js"></script>
 <script src="link.js"></script>
+<script src="toolkit.js"></script>
 <script>
   LAB.boot(); LAB.climate.init(); LAB.sim.init(); LAB.energy.init(); LAB.report.init(); LAB.io.init(); LAB.tabs.init(); LAB.help.apply(document);
 </script>

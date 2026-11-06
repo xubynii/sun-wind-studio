@@ -66,12 +66,28 @@ then open http://localhost:8000/. Any static host works the same way. PDFs downl
 | `viz.js` | drawing kit: bars, paired bars, stacked bands, roses, compass bars, line charts, façade maps, monthly bars, gauges, radar and donut figures shared by the panel and the PDF |
 | `figdocs.js` | figure explainers: click any diagram in the review panel for what it shows, how to read it, how it is computed, what good looks like, design moves and sources |
 | `link.js` | live link to Rhino: polls the Sun & Wind Link plugin on 127.0.0.1 and re-imports the model when it changes |
+| `toolkit.js` | link from Tower Design Toolkit (branch `ruijie/tower-toolkit-link`, for review): takes a tower sent by the Toolkit window to window and imports it; see *From Tower Design Toolkit* below |
 | `rhino/sw_link.py` | the Rhino 7 / 8 plugin: layer setup and mapping, model check, local server, JSON export ([download](https://xubynii.github.io/sun-wind-studio/rhino/sw_link.py) · [guide](rhino/README.md)) |
 | `parts.js` | model parts review after import: classifies and highlights floor plates, ground floor, façade, windows, roof, ceiling, structure, core and stairs, and applies what you confirm |
 | `report.js` | PDF reports (jsPDF): the five-section visual report and the scheme sheet |
 | `site.json`, `rhino3dm.min.js`, `rhino3dm.wasm` | downtown Vancouver site model and the Rhino loader |
 
 Settings persist in the browser's local storage per device.
+
+## From Tower Design Toolkit (branch `ruijie/tower-toolkit-link`)
+
+*Added by Ruijie Liu on 6 Nov 2026 for Sinnie's review; nothing else in the tool changes, and it is not on the live page until this branch is merged.*
+
+In [Tower Design Toolkit](https://ruijieliu6.github.io/tower-design-toolkit/), **Export model › Send to Sun & Wind Studio** opens this page as `?from=toolkit` and hands over the selected tower; `toolkit.js` imports it through the same path as a Rhino live-link update (`LAB.io.importLive`). The model passes from one browser window to the other by `postMessage`, nothing is uploaded, and pressing Send again after a design change updates the open page.
+
+- **What arrives**: the selected tower as massing, one closed solid per storey in the format `io.js` reads (`{meshes:[{layer, role, part, v, f}]}`); the other design towers as context; each storey's program in this tool's program keys (set on the floors when the sliced floors match the Toolkit's storeys one to one).
+- **Competition site**: the Toolkit and this tool share the block's frame (centre 0, 0, the 144.8 m side along x), so the tower lands where it was designed, on `site.json`.
+- **Real Vancouver**: the buildings within 350 m of the tower (Toolkit heights by source, seated on flat ground) replace the site, centred on the tower with `meta.origin` [0, 0]; *Restore the Vancouver site* or the next competition-site send brings `site.json` back.
+- **North, open question**: the Toolkit reads true north on the competition model at 45° clockwise from +y (from the model's drawn north arrow), while this tool takes +y as north. The receiver says so when they differ and changes nothing.
+- **Safety**: messages are taken only from the window that opened this page, and only from `https://ruijieliu6.github.io` or `localhost` / `127.0.0.1`; every coordinate and index is checked and the size is capped. The page answers only to the sender's origin.
+
+Without this branch, the same model reaches the live page as a file: in the Toolkit, *Model for Sun & Wind Studio (.json)*, then choose it on the Model tab (for Real Vancouver, *Surroundings as its site (.json)* on the Site tab first).
+
 
 ## Views and the clipping plane
 
