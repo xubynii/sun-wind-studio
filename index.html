@@ -336,6 +336,12 @@ body[data-tone] #run-active{background:var(--tone,var(--accent));border-color:va
 .flow-ctl .fc-stat{font:500 10.5px var(--font-m);color:#5F646B}.flow-ctl .fc-stat:empty{display:none}
 #plan-layers .flow-ctl{flex-basis:100%;max-width:300px}
 .flow-ctl .fc-seg button[data-twhen]{font-size:10.5px}
+body[data-mode="advanced"] .abar .ov,body[data-mode="advanced"] #ov-legend{display:none} /* site sun and wind on the ground: Massing only */
+.tbar{display:none;flex:1;align-items:center;gap:10px;min-width:0;flex-wrap:wrap}
+body[data-mode="advanced"][data-tab="daylight"] .tbar,body[data-mode="advanced"][data-tab="energy"] .tbar{display:flex}
+.tbar .tb-r{display:flex;align-items:center;gap:6px;flex:1;min-width:120px;font:500 11px var(--font-b);color:var(--muted)}.tbar .tb-r input{flex:1;min-width:60px}
+.tbar #tb-label{font:600 12px var(--font-m);color:var(--ink,#1F2227);white-space:nowrap;min-width:92px;text-align:center}
+.tbar .btn[aria-pressed="true"]{background:#E3F0F3;border-color:#1F7FA6;color:#0B4A66}
 .planpanel .pp-legend{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:6px;color:#5F646B;font-size:10.5px}.planpanel .pp-legend span{display:flex;align-items:center;gap:4px}
 .planpanel .pp-legend i{display:inline-block;width:16px;height:7px}.lg-cut{background:#1F2227}.lg-glass{border-top:1px solid #1F2227;border-bottom:1px solid #1F2227;background:linear-gradient(#2F5F8A,#2F5F8A) center/100% 1px no-repeat}.lg-below{border-top:1px solid #5F646B;height:0!important;margin-top:3px}.lg-over{border-top:1px dashed #4B5057;height:0!important;margin-top:3px}
 .keyplan .kp-hint{margin:6px 0 0;color:#6B7078;font-size:10.5px}.view2d-hint{color:var(--ink)}
