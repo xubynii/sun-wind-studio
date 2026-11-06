@@ -25,7 +25,7 @@ Weather is the CWEC2020 typical year for Vancouver International Airport (climat
 2. **Site.** Position and rotate the tower on the competition parcel with the sliders, or drag the mass across the site in the viewport (snaps to 1 m, Alt for free movement; arrow keys nudge 1 m, Shift for 5 m; `[` and `]` rotate; Esc deselects); toggle the three future towers and street labels, or upload your own site model (`.3dm`, `.obj` or `.json`) here: each layer becomes context or terrain, replacing the Vancouver site or adding to it.
 3. **Massing phase.** Run **Sun** (one date, or a period weighted by Vancouver's sunshine hours), **Wind** (one case, or eight sectors of the seasonal rose) and read **Efficiency** live. The analysis bar under the canvas switches the overlay and shows its legend.
 4. **Design development.** Design the **Façade** by zone: a face over a level range with a strategy from the catalogue (curtain wall, punched windows, overhang, louvres, fins, egg-crate, light shelf, balconies, double skin, PV spandrel, green wall, terrace screens). Run **Daylight** and **Ventilation**; edit **Energy** construction and systems live. The review panel is drawn, not written: each study is a headline, three key figures and conventional analysis drawings (shadow range diagram, sun path, unrolled façade sun map, Lawson comfort bands, downwash section, wind rose by sector, wind profile with height, driving-rain rose and exposure diagram, wetted-wall chart, ponding bars, form radar, energy against targets, end-use donut), with the readings, tables and method notes kept for the report and the hover notes.
-5. **Report.** Tick the sections, name the levels for plan sheets, and generate a PDF.
+5. **Report.** A visual PDF in five sections: 1 Summary (LEED and code scorecard), 2 Site (sun, wind, rain maps), 3 Daylight (sDA, ASE, daylight factor plans and the shading strategy), 4 Ventilation (air flow and reach plans), 5 Energy and temperature (TEUI, TEDI, GHGI, heat loss, indoor comfort with each system). Each section opens with its key results as scales; the rest is maps, plans and charts with one-line captions. The PDF buttons on the study tabs print the matching section.
 
 ## What the studies compute
 
@@ -68,7 +68,7 @@ then open http://localhost:8000/. Any static host works the same way. PDFs downl
 | `link.js` | live link to Rhino: polls the Sun & Wind Link plugin on 127.0.0.1 and re-imports the model when it changes |
 | `rhino/sw_link.py` | the Rhino 7 / 8 plugin: layer setup and mapping, model check, local server, JSON export ([download](https://xubynii.github.io/sun-wind-studio/rhino/sw_link.py) · [guide](rhino/README.md)) |
 | `parts.js` | model parts review after import: classifies and highlights floor plates, ground floor, façade, windows, roof, ceiling, structure, core and stairs, and applies what you confirm |
-| `report.js` | PDF reports (jsPDF) |
+| `report.js` | PDF reports (jsPDF): the five-section visual report and the scheme sheet |
 | `site.json`, `rhino3dm.min.js`, `rhino3dm.wasm` | downtown Vancouver site model and the Rhino loader |
 
 Settings persist in the browser's local storage per device.

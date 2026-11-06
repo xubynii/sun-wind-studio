@@ -613,19 +613,18 @@ body[data-mode="advanced"][data-tab="daylight"] .tbar,body[data-mode="advanced"]
 
       <section class="tab" data-tab="report">
         <h1 class="ptitle">Report</h1>
-        <p class="plead">Choose what the PDF carries. The review panel on the right is the live version; the PDF is a snapshot of the last runs with the settings, figures, tables, site captures and floor plans you select.</p>
+        <p class="plead">Five sections, each led by its key results, then maps, plans and charts.</p>
         <h2>Title</h2>
         <div class="ctl"><input type="text" id="rep-title" placeholder="Report title, e.g. Tower A · sun and wind, scheme 3"></div>
         <div class="ctl"><input type="text" id="rep-author" placeholder="Prepared by"></div>
         <h2>Sections</h2>
         <div id="rep-sections" class="checks one"></div>
         <h2>Floor plans</h2>
-        <p class="blurb adv" style="margin-top:0">Levels to draw as plans, with the layers below. Comma-separated, e.g. 5, 24, 60.</p>
+        <p class="blurb" style="margin-top:0">Levels for the daylight, air and temperature plans, e.g. 5, 24, 60.</p>
         <div class="ctl"><input type="text" id="rep-levels" placeholder="auto · low, middle and high floors"></div>
-        <div id="rep-layers" class="checks"></div>
         <div class="actions"><button class="btn primary" id="rep-make" type="button">Generate PDF</button><button class="btn" id="run-all" type="button">Run all studies first</button></div>
         <p class="io-status" id="run-all-status"></p>
-        <p class="note">In Massing mode the report carries the site-level sun, wind and rain studies and the form efficiency; in Design development it adds the façade, daylight, ventilation and energy sections and the floor plans.</p>
+        <p class="note">Studies not yet run show as grey tiles. Daylight and the floor-plate plans are computed while the PDF is built.</p>
       </section>
 
     </aside>

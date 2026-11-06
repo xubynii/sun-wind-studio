@@ -98,7 +98,10 @@ function donut(parts,o){ o=o||{}; const W=380,H=o.h||150, cx=78, cy=H/2+(o.title
 function fig(svg,caption,cls,key){ const m=key?null:/data-key="([^"]+)"/.exec(svg); const k=key||(m&&m[1]); return `<figure class="fig ${cls||''}"${k?` data-fig="${k}" tabindex="0" role="button" aria-label="Explain this figure"`:''}><div class="figsvg">${svg}</div>${caption?`<figcaption>${caption}</figcaption>`:''}</figure>`; }
 function row(...figs){ return `<div class="figrow">${figs.join('')}</div>`; }
 /* resolve colour tokens for the PDF */
-function pdf(svg){ const cs=getComputedStyle(document.documentElement); return svg.replace(/var\((--[a-z0-9-]+)\)/g,(m,k)=>cs.getPropertyValue(k).trim()||'#888').replace(/font-family:[^;"]+/g,'font-family:Helvetica, Arial, sans-serif'); }
+/* the PDF is always printed in the light palette: the first :root rules, outside the dark-mode blocks */
+let LIGHT=null; function lightTokens(){ if(LIGHT) return LIGHT; LIGHT={}; for(const sh of document.styleSheets){ let rules; try{ rules=sh.cssRules; }catch(e){ continue; } for(const r of rules){ if(r.selectorText===':root'&&r.style) for(let i=0;i<r.style.length;i++){ const p=r.style[i]; if(p.startsWith('--')&&!(p in LIGHT)) LIGHT[p]=r.style.getPropertyValue(p).trim(); } } } return LIGHT; }
+function tok(k){ return lightTokens()[k]||getComputedStyle(document.documentElement).getPropertyValue(k).trim()||'#888'; }
+function pdf(svg){ return svg.replace(/var\((--[a-z0-9-]+)\)/g,(m,k)=>/^--font/.test(k)?'Helvetica, Arial, sans-serif':tok(k)).replace(/font-family:[^;"]+/g,'font-family:Helvetica, Arial, sans-serif'); }
 const ramp=(stops)=>v=>{ const t=Math.max(0,Math.min(1,v)); const n=stops.length-1; const i=Math.min(n-1,Math.floor(t*n)); const f=t*n-i; const a=stops[i], b=stops[i+1]; return `rgb(${Math.round(a[0]+(b[0]-a[0])*f)},${Math.round(a[1]+(b[1]-a[1])*f)},${Math.round(a[2]+(b[2]-a[2])*f)})`; };
-LAB.viz={hbars,pairs,stack,rose,compass,line,facadeMap,months,gauge,radar,donut,fig,row,pdf,ramp,esc};
+LAB.viz={tok,hbars,pairs,stack,rose,compass,line,facadeMap,months,gauge,radar,donut,fig,row,pdf,ramp,esc};
 })();

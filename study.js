@@ -122,7 +122,7 @@ function setOverlayHeights(T){ if(!overlayMesh) return; const g=overlayMesh.geom
   for(let iy=0;iy<=segY;iy++) for(let ix=0;ix<=segX;ix++){ let z=0; if(T.has){ const cx=Math.min(DOM.nx-1,ix*2), cy=Math.min(DOM.ny-1,(segY-iy)*2); z=T.dem[cy*DOM.nx+cx]; } pos.setZ(i++,z); }
   pos.needsUpdate=true; g.computeBoundingSphere(); if(T.has){ LAB.ground.position.y=Math.min(-0.05,T.min-0.5); } else LAB.ground.position.y=-0.05; LAB.requestRender(); }
 function setOverlay(fn){
-  if(adv()){ if(overlayMesh&&overlayMesh.visible){ overlayMesh.visible=false; LAB.requestRender(); } return; }
+  if(adv()&&!repOverlay){ if(overlayMesh&&overlayMesh.visible){ overlayMesh.visible=false; LAB.requestRender(); } return; }
   ensureOverlay();
   for(let iy=0;iy<DOM.ny;iy++) for(let ix=0;ix<DOM.nx;ix++){ const k=(iy*DOM.nx+ix)*4; const c=fn(ix,iy); if(c){ overlayData[k]=c[0]; overlayData[k+1]=c[1]; overlayData[k+2]=c[2]; overlayData[k+3]=c[3]; } else overlayData[k+3]=0; }
   overlayTex.needsUpdate=true; overlayMesh.visible=true; LAB.requestRender();
@@ -1405,43 +1405,43 @@ function focusOf(){ return ({sun:'sun',daylight:'sun',wind:'wind',vent:'wind',ra
 /* each result: a short name, the standard as a tag, the value, a pass / near / fail pill, and a scale that shows the value against the threshold.
    The long explanation is the hover text. bar: {max, v, zone:[from,to] passing range, ticks:[[value,label]]}; stack: {parts, colors}. */
 const KR=(o)=>Object.assign({status:'na',badge:'',tip:'',bar:null,stack:null},o);
-function keyItems(tab){ const pc=v=>Math.round(v*100)+'%'; const r=sunResult, w=windResult; const items=[];
+function keyItems(tab,all){ const pc=v=>Math.round(v*100)+'%'; const r=sunResult, w=windResult; const items=[];
   const notRun=(name,std,what)=>KR({name,std,val:'–',badge:'not run',tip:'Run '+what+' to get this reading.'});
   const pts=v=>v>=0.75?3:v>=0.55?2:v>=0.40?1:0;
   const sdaItem=D=>{ const p=pts(D.sda); return KR({name:'Daylight autonomy',std:'LEED',val:pc(D.sda),status:p?'ok':'bad',badge:p+' pt'+(p===1?'':'s'),tip:'LEED v4.1 EQ Daylight, option 1: sDA300/50%, the share of the floor that reaches 300 lux from daylight for at least half the occupied hours. 40 / 55 / 75% earn 1 / 2 / 3 points.',bar:{max:1,v:D.sda,zone:[0.40,1],ticks:[[0.40,'40'],[0.55,'55'],[0.75,'75%']]}}); };
   const teuiItem=en=>KR({name:'Energy use',std:'TEUI',val:en.teui.toFixed(0),unit:'kWh/m²',status:en.teui<=en.tgt.teui?'ok':'bad',badge:en.teui<=en.tgt.teui?'meets':'+'+Math.round((en.teui/en.tgt.teui-1)*100)+'%',tip:'Total energy use intensity against the City of Vancouver rezoning target, weighted by program: '+en.tgt.teui.toFixed(0)+' kWh/m² a year.',bar:{max:Math.max(en.tgt.teui*1.6,en.teui*1.1),v:en.teui,zone:[0,en.tgt.teui],ticks:[[en.tgt.teui,'target '+en.tgt.teui.toFixed(0)]]}});
   const dlTower=()=>(r&&r.daylight)||(typeof daylightTowerCached==='function'?daylightTowerCached():null);
-  if(adv()&&tab==='daylight'){ const D=dlTower(); items.push(D?sdaItem(D):notRun('Daylight autonomy','LEED','sun and daylight'));
+  if((all||adv())&&tab==='daylight'){ const D=dlTower(); items.push(D?sdaItem(D):notRun('Daylight autonomy','LEED','sun and daylight'));
     const ase=(r&&r.ase)||aseTowerRes; items.push(ase?KR({name:'Sunlight exposure',std:'LEED',val:pc(ase.pct),status:ase.pct<=0.10?'ok':'warn',badge:ase.pct<=0.10?'meets':'glare',tip:'LEED v4.1 EQ Daylight: ASE1000/250h, the share of the floor in direct sun over 1,000 lux for more than 250 hours a year. At most 10%, or show glare control.',bar:{max:0.3,v:ase.pct,zone:[0,0.10],ticks:[[0.10,'10% max']]}}):notRun('Sunlight exposure','LEED','sun and daylight'));
     if(D&&D.mean!=null) items.push(KR({name:'Daylight factor',std:'EN 17037',val:(D.mean*100).toFixed(1)+'%',status:D.mean>=0.02?'ok':D.mean>=0.01?'warn':'bad',badge:D.mean>=0.02?'good':D.mean>=0.01?'fair':'low',tip:'Mean daylight factor under an overcast sky. 2% reads as well daylit; under 1% needs electric light most of the day.',bar:{max:0.05,v:D.mean,zone:[0.02,0.05],ticks:[[0.01,'1'],[0.02,'2%']]}})); }
-  else if(adv()&&tab==='vent'){ const vt=(w&&w.vt)||ventTowerQuick();
+  else if((all||adv())&&tab==='vent'){ const vt=(w&&w.vt)||ventTowerQuick();
     if(vt&&vt.operable){ items.push(KR({name:'Openable area',std:'ASHRAE 62.1',val:vt.freePct.toFixed(1)+'%',status:vt.freePct>=4?'ok':'bad',badge:vt.freePct>=4?'meets':'below',tip:'Free opening area as a share of the floor it serves, on floors with operable windows. ASHRAE 62.1 asks at least 4%.',bar:{max:Math.max(8,vt.freePct*1.2),v:vt.freePct,zone:[4,Math.max(8,vt.freePct*1.2)],ticks:[[4,'4% min']]}}));
       items.push(KR({name:'Within 8 m of a window',std:'ASHRAE 62.1',val:pc(vt.within8),status:vt.within8>=0.95?'ok':'warn',badge:vt.within8>=0.95?'meets':'gaps',tip:'Share of the operable floor area within 8 m of an operable opening. ASHRAE 62.1 asks every point of a naturally ventilated space to be.',bar:{max:1,v:vt.within8,zone:[0.95,1],ticks:[[0.95,'all']]}})); }
     else items.push(KR({name:'Openable area',std:'ASHRAE 62.1',val:'none',status:'bad',badge:'no windows',tip:'No façade zone has operable windows; make one operable on the Façade tab.'}));
     items.push(w&&w.vent?KR({name:'Windows can do the work',std:'ASHRAE 55',val:pc(w.vent.total/Math.max(1,w.vent.hoursTot)),tip:'Share of hours in the period when opening the windows keeps the floor in the comfort band ('+(w.vent.adaptive?'ASHRAE 55 adaptive':'fixed band')+'); mechanical cooling covers the rest.',bar:{max:1,v:w.vent.total/Math.max(1,w.vent.hoursTot)}}):notRun('Windows can do the work','ASHRAE 55','wind and ventilation')); }
-  else if(adv()&&tab==='energy'){ let en=LAB.energy&&LAB.energy.last; if(!en&&LAB.energy&&LAB.floors){ try{ en=LAB.energy.model(LAB.floors); }catch(e){} }
+  else if((all||adv())&&tab==='energy'){ let en=LAB.energy&&LAB.energy.last; if(!en&&LAB.energy&&LAB.floors){ try{ en=LAB.energy.model(LAB.floors); }catch(e){} }
     if(en){ items.push(teuiItem(en));
       items.push(KR({name:'Heating demand',std:'TEDI',val:en.tedi.toFixed(1),unit:'kWh/m²',status:en.tedi<=en.tgt.tedi?'ok':'bad',badge:en.tedi<=en.tgt.tedi?'meets':'+'+Math.round((en.tedi/en.tgt.tedi-1)*100)+'%',tip:'Thermal energy demand intensity: space heating before the plant, against the Vancouver target of '+en.tgt.tedi.toFixed(0)+' kWh/m² a year.',bar:{max:Math.max(en.tgt.tedi*1.6,en.tedi*1.1),v:en.tedi,zone:[0,en.tgt.tedi],ticks:[[en.tgt.tedi,'target '+en.tgt.tedi.toFixed(0)]]}}));
       items.push(KR({name:'Carbon',std:'GHGI',val:en.ghgi.toFixed(2),unit:'kgCO₂e/m²',status:en.ghgi<=en.tgt.ghgi?'ok':'bad',badge:en.ghgi<=en.tgt.ghgi?'meets':'+'+Math.round((en.ghgi/en.tgt.ghgi-1)*100)+'%',tip:'Greenhouse gas intensity against the Vancouver target of '+en.tgt.ghgi.toFixed(1)+' kgCO₂e/m² a year (gas 0.18, BC electricity 0.011 kg/kWh).',bar:{max:Math.max(en.tgt.ghgi*1.6,en.ghgi*1.1),v:en.ghgi,zone:[0,en.tgt.ghgi],ticks:[[en.tgt.ghgi,'target '+en.tgt.ghgi.toFixed(1)]]}})); } }
-  else if(adv()&&tab==='strat'){ let A=0, G=0; for(const f of LAB.floors||[]) for(const o of ORI){ const a=(f.facade?f.facade[o]:0)*f.h; const g=zoneGlazing(f,o); A+=a; G+=a*g.wwr; } const wwr=A?G/A:0;
+  else if((all||adv())&&tab==='strat'){ let A=0, G=0; for(const f of LAB.floors||[]) for(const o of ORI){ const a=(f.facade?f.facade[o]:0)*f.h; const g=zoneGlazing(f,o); A+=a; G+=a*g.wwr; } const wwr=A?G/A:0;
     items.push(KR({name:'Window-to-wall ratio',std:'ASHRAE 90.1',val:pc(wwr),status:wwr<=0.40?'ok':'warn',badge:wwr<=0.40?'within':'over',tip:'Glazing as a share of the gross wall. Above 40% the ASHRAE 90.1 prescriptive path no longer applies and the energy performance path is needed.',bar:{max:1,v:wwr,zone:[0,0.40],ticks:[[0.40,'40% max']]}}));
     const D=dlTower(); if(D) items.push(sdaItem(D)); const en=LAB.energy&&LAB.energy.last; if(en) items.push(teuiItem(en)); }
-  else if(!adv()&&tab==='sun'){ if(r&&r.plazaTot!=null){
+  else if((all||!adv())&&tab==='sun'){ if(r&&r.plazaTot!=null){
       if(r.plazaTot) items.push(KR({name:'Plazas in new shadow',std:'Public realm',val:pc(r.plaza/r.plazaTot),status:r.plaza/r.plazaTot<=0.25?'ok':'warn',badge:r.plaza/r.plazaTot<=0.25?'low':'high',tip:'Share of plaza and link area with at least '+r.th[0]+' h of new shadow in the study window. Aim to stay under a quarter.',bar:{max:1,v:r.plaza/r.plazaTot,zone:[0,0.25],ticks:[[0.25,'25% aim']]}}));
       items.push(KR({name:'New shadow on the ground',std:'Shadow study',val:fmtI(r.a1),unit:'m²',tip:'Ground with at least '+r.th[0]+' h of new shadow; '+fmtI(r.a4)+' m² gets '+r.th[2]+' h or more.'}));
       items.push(KR({name:'Sunlight lost by neighbours',std:'Solar access',val:fmtI(r.lostKWh),unit:'kWh',tip:(r.perDay?'On a clear day':'In the period')+', on neighbouring façades and roofs.'})); }
     else items.push(notRun('Plazas in new shadow','Public realm','the sun study')); }
-  else if(!adv()&&tab==='wind'){ if(w&&w.cats){ const tot=w.cats.reduce((a,b)=>a+b,0)||1, ok=(w.cats[0]+w.cats[1])/tot, bad=w.cats[4]/tot;
+  else if((all||!adv())&&tab==='wind'){ if(w&&w.cats){ const tot=w.cats.reduce((a,b)=>a+b,0)||1, ok=(w.cats[0]+w.cats[1])/tot, bad=w.cats[4]/tot;
       items.push(KR({name:'Ground calm enough to stand',std:'Lawson',val:pc(ok),status:ok>=0.8?'ok':ok>=0.6?'warn':'bad',badge:ok>=0.8?'good':ok>=0.6?'fair':'poor',tip:'Share of open ground in the Lawson sitting or standing bands (mean speed up to 4 m/s). The bar shows all five bands, calmest on the left.',stack:{parts:w.cats.map(c=>c/tot),colors:BAND_COL,names:BANDS}}));
       items.push(KR({name:'Plaza peak wind',std:'Lawson',val:w.plazaWorst.toFixed(1),unit:'m/s',status:w.plazaWorst<=4?'ok':w.plazaWorst<=6?'warn':'bad',badge:w.plazaWorst<=4?'calm':w.plazaWorst<=6?'breezy':'windy',tip:'The windiest point on the plazas: up to 4 m/s suits sitting and standing, 6 strolling, 8 walking; above 8 is uncomfortable.',bar:{max:10,v:Math.min(10,w.plazaWorst),zone:[0,4],ticks:[[4,'4'],[6,'6'],[8,'8 m/s']]}}));
       items.push(KR({name:'Uncomfortable ground',std:'Lawson',val:pc(bad),status:bad<=0.01?'ok':'bad',badge:bad<=0.01?'none':'present',tip:'Open ground over 8 m/s mean, uncomfortable for any use. There should be none near entrances.'})); }
     else items.push(notRun('Ground calm enough to stand','Lawson','the wind study')); }
-  else if(!adv()&&tab==='rain'){ const R=LAB.rain&&LAB.rain.result; if(R&&R.faces&&R.faces.length){ const worst=R.faces.reduce((a,f)=>f.index>a.index?f:a,R.faces[0]); const lv=['sheltered','moderate','severe','very severe']; const li=Math.max(0,lv.indexOf(worst.band));
+  else if((all||!adv())&&tab==='rain'){ const R=LAB.rain&&LAB.rain.result; if(R&&R.faces&&R.faces.length){ const worst=R.faces.reduce((a,f)=>f.index>a.index?f:a,R.faces[0]); const lv=['sheltered','moderate','severe','very severe']; const li=Math.max(0,lv.indexOf(worst.band));
       items.push(KR({name:'Wettest face',std:'ISO 15927-3',val:NAMES[worst.o],status:li<=1?'ok':li===3?'bad':'warn',badge:worst.band,tip:'The face most exposed to wind-driven rain: index '+worst.index.toFixed(0)+', '+worst.band+' exposure. The scale runs sheltered, moderate, severe, very severe.',bar:{max:4,v:li+0.5,zone:[0,2],ticks:[[1,''],[2,''],[3,'']]}}));
       try{ const RC=LAB.rain.roofCollect(R); if(RC.area>0) items.push(KR({name:'Rainwater collected',std:'LEED WE',val:fmtI(RC.annual),unit:'m³/yr',tip:'From '+fmtI(RC.area)+' m² of roof and terraces'+(RC.flushShare!=null?', '+pc(RC.flushShare)+' of toilet flushing':'')+'.',bar:RC.flushShare!=null?{max:1,v:Math.min(1,RC.flushShare),ticks:[]}:null})); }catch(e){}
       items.push(KR({name:'Ground kept dry',std:'Shelter',val:fmtI(R.dry),unit:'m²',tip:'In the design storm'+(R.plazaTot?', '+fmtI(R.dryPlaza)+' m² of it on plazas':'')+'.'})); }
     else items.push(notRun('Wettest face','ISO 15927-3','the rain study')); }
-  else if(!adv()&&tab==='eff'&&LAB.energy&&LAB.energy.formStudy&&LAB.floors){ try{ const F=LAB.energy.formStudy(LAB.floors); const L=['A','B','C','D','E'];
+  else if((all||!adv())&&tab==='eff'&&LAB.energy&&LAB.energy.formStudy&&LAB.floors){ try{ const F=LAB.energy.formStudy(LAB.floors); const L=['A','B','C','D','E'];
       items.push(KR({name:'Form rating',std:'Supertall bands',val:L[F.overall],status:F.overall<=1?'ok':F.overall<=2?'warn':'bad',badge:F.overall<=1?'efficient':F.overall<=2?'fair':'costly',tip:'A is a compact shaft; D and E lose heat to voids, steps and terraces.',rating:F.overall}));
       items.push(KR({name:'Envelope per floor area',std:'Form factor',val:F.ff.toFixed(2),status:F.ff<=0.3?'ok':F.ff<=0.4?'warn':'bad',badge:F.ff<=0.3?'compact':'large skin',tip:'m² of envelope per m² of floor; 0.30 or less is compact.',bar:{max:0.6,v:Math.min(0.6,F.ff),zone:[0,0.3],ticks:[[0.3,'0.30']]}}));
       items.push(KR({name:'Heat lost by the form',std:'vs square prism',val:Math.round(F.relHeat*100)+'%',status:F.relHeat<=1.1?'ok':F.relHeat<=1.3?'warn':'bad',badge:F.relHeat<=1.1?'close':'+'+Math.round((F.relHeat-1)*100)+'%',tip:'Against a square shaft of the same height and volume (100%).',bar:{max:1.6,v:Math.min(1.6,F.relHeat),zone:[0,1.1],ticks:[[1,'100%']]}})); }catch(e){} }
@@ -1627,7 +1627,6 @@ function renderWind(r){
 
 /* ---------- report data for the PDF builder ---------- */
 function reportData(kind){
-  if(kind==='custom') return customReportData();
   if(kind==='rain') return LAB.rain?LAB.rain.reportData():null;
   const S=LAB.S, fmt=fmtI; const modeName=adv()?'Design development':'Massing';
   if(kind==='sun'){ const r=sunResult, sd=S.impact.sun, D=DATES[sd.date]; if(!r) return null; const yr=r.scope==='period'; const P=r.period, unit=yr&&P.full?'h per year':'h in the period'; const H=r.heat;
@@ -2126,62 +2125,116 @@ function leedCard(r,w){
   const en=LAB.energy&&LAB.energy.last; if(en){ rows.push(['Energy · Vancouver rezoning targets','TEUI',en.teui.toFixed(0)+' kWh/m²/yr','≤ '+en.tgt.teui.toFixed(0)+' (program-weighted)',en.teui<=en.tgt.teui?st('ok','meets'):st('bad','over by '+Math.round((en.teui/en.tgt.teui-1)*100)+'%')],['','TEDI',en.tedi.toFixed(1)+' kWh/m²/yr','≤ '+en.tgt.tedi.toFixed(0),en.tedi<=en.tgt.tedi?st('ok','meets'):st('bad','over')],['','GHGI',en.ghgi.toFixed(2)+' kgCO₂e/m²/yr','≤ '+en.tgt.ghgi.toFixed(1),en.ghgi<=en.tgt.ghgi?st('ok','meets'):st('bad','over')]); }
   return `<h3 style="margin-top:12px">Scorecard · LEED v4.1 and Vancouver targets, indicative</h3><div class="tbl-wrap"><table class="score"><thead><tr><th>Credit</th><th>Metric</th><th>Result</th><th>Threshold</th><th>Status</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${x[0]}</td><td class="why">${x[1]}</td><td class="num">${x[2]}</td><td class="why">${x[3]}</td><td>${x[4]}</td></tr>`).join('')}</tbody></table></div><p class="note">Proxies for early design: sDA from a daylight-factor model, ASE from a sun sweep without blinds, ventilation from the façade zones' operable share. LEED documentation needs an hourly Radiance run and the 62.1 natural ventilation procedure.</p>`;
 }
-/* ---------- report builder ---------- */
-const REP_SECTIONS=[['summary','Summary and settings',true],['shadow','Shadow on the ground and plazas',true],['facade','Sun on the façades and solar heat',true],['efficiency','Massing efficiency · form metrics',true],['daylight','Daylight · sDA and ASE (Design development)',true],['wind','Pedestrian wind comfort',true],['rain','Rain · driving rain, shelter and harvesting',true],['vent','Natural ventilation and terraces (Design development)',true],['energy','Energy model · TEUI, TEDI, GHGI (Design development)',true],['plans','Floor plans (Design development)',true],['method','Method and assumptions',true]];
-const REP_LAYERS=[['da','Daylight autonomy'],['df','Daylight factor'],['ase','Annual sun exposure'],['flow','Air flow'],['reach','Reach of openings']];
-function repDefaults(){ const o={title:'',author:'',levels:'',sections:{},layers:{da:true,df:false,ase:true,flow:true,reach:true}}; for(const [k,,d] of REP_SECTIONS) o.sections[k]=d; return o; }
+/* ---------- the PDF report: five visual sections, each led by its key results, then maps, plans and charts ---------- */
+const REP_SECTIONS=[['summary','Summary · LEED'],['site','Site · sun, wind, rain'],['daylight','Daylight and shading'],['vent','Ventilation'],['energy','Energy and temperature']];
+function repDefaults(){ const o={title:'',author:'',levels:'',sections:{}}; for(const [k] of REP_SECTIONS) o.sections[k]=true; return o; }
 function buildReportUI(){
-  SW.report=Object.assign(repDefaults(),SW.report||{}); SW.report.sections=Object.assign(repDefaults().sections,SW.report.sections||{}); SW.report.layers=Object.assign(repDefaults().layers,SW.report.layers||{});
-  $('rep-sections').innerHTML=REP_SECTIONS.map(([k,n])=>`<label class="check${k==='rain'?' basic-only':''}${/Design development/.test(n)?' adv':''}" for="rep-s-${k}"><input type="checkbox" id="rep-s-${k}" data-k="${k}"><span>${n.replace(' (Design development)','')}</span></label>`).join('');
-  $('rep-layers').innerHTML=REP_LAYERS.map(([k,n])=>`<label class="check" for="rep-l-${k}"><input type="checkbox" id="rep-l-${k}" data-k="${k}"><span>${n}</span></label>`).join('');
+  SW.report=Object.assign(repDefaults(),SW.report||{}); SW.report.sections=Object.assign(repDefaults().sections,SW.report.sections||{});
+  $('rep-sections').innerHTML=REP_SECTIONS.map(([k,n],i)=>`<label class="check" for="rep-s-${k}"><input type="checkbox" id="rep-s-${k}" data-k="${k}"><span>${i+1} · ${n}</span></label>`).join('');
   document.querySelectorAll('#rep-sections input').forEach(i=>i.addEventListener('change',e=>{ SW.report.sections[e.target.dataset.k]=e.target.checked; persist(); }));
-  document.querySelectorAll('#rep-layers input').forEach(i=>i.addEventListener('change',e=>{ SW.report.layers[e.target.dataset.k]=e.target.checked; persist(); }));
   $('rep-title').addEventListener('input',e=>{ SW.report.title=e.target.value; persist(); }); $('rep-author').addEventListener('input',e=>{ SW.report.author=e.target.value; persist(); }); $('rep-levels').addEventListener('input',e=>{ SW.report.levels=e.target.value; persist(); });
-  $('rep-make').addEventListener('click',()=>generateReport());
+  $('rep-make').addEventListener('click',()=>pdfReport());
   syncReportUI();
 }
-function syncReportUI(){ const R=SW.report; if(!R) return; document.querySelectorAll('#rep-sections input').forEach(i=>{ i.checked=!!R.sections[i.dataset.k]; }); document.querySelectorAll('#rep-layers input').forEach(i=>{ i.checked=!!R.layers[i.dataset.k]; }); $('rep-title').value=R.title||''; $('rep-author').value=R.author||''; $('rep-levels').value=R.levels||''; $('rep-layers').parentNode&&($('rep-layers').style.display=adv()?'':'none'); }
-function svgToJpeg(svg,w,h){
-  const cs=getComputedStyle(document.documentElement); const resolved=svg.replace(/var\((--[a-z0-9-]+)\)/g,(m,k)=>{ if(k==='--font-m') return 'Consolas, monospace'; if(k==='--font-b') return 'sans-serif'; return cs.getPropertyValue(k).trim()||'#888'; }).replace('<svg ','<svg xmlns="http://www.w3.org/2000/svg" ');
-  return new Promise((res,rej)=>{ const blob=new Blob([resolved],{type:'image/svg+xml;charset=utf-8'}); const url=URL.createObjectURL(blob); const img=new Image(); img.onload=()=>{ const c=document.createElement('canvas'); c.width=w; c.height=h; const ctx=c.getContext('2d'); ctx.fillStyle=cs.getPropertyValue('--panel').trim()||'#fff'; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h); URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg',0.9)); }; img.onerror=e=>{ URL.revokeObjectURL(url); rej(e); }; img.src=url; });
-}
-let customExtra=null;
-function reportLevels(){ const nF=LAB.floors?LAB.floors.length:1; const txt=(SW.report&&SW.report.levels||'').trim(); let L=txt?txt.split(/[,\s]+/).map(x=>parseInt(x,10)).filter(x=>x>=1&&x<=nF):[]; if(!L.length) L=[...new Set([Math.max(1,Math.round(nF*0.15)),Math.max(1,Math.round(nF*0.5)),Math.max(1,Math.round(nF*0.85))])]; return L.slice(0,6); }
-async function generateReport(){
-  const b=$('rep-make'); const S=SW.report; b.disabled=true; const status=msg=>{ $('run-all-status').textContent=msg; };
-  try{
-    customExtra={grids:[],charts:[]};
-    if(adv()&&S.sections.plans&&LAB.floors){ for(const [pk,title] of [['sun','Floor plans · sun and daylight inside'],['air','Floor plans · air inside']]){ const layers=REP_LAYERS.filter(([k])=>S.layers[k]&&PLAN_SETS[pk].some(([q])=>q===k)); if(!layers.length) continue; const rows=[];
-      for(const L of reportLevels()){ status(`Drawing level ${L}…`); await new Promise(r=>setTimeout(r,10)); const f=LAB.floors[L-1]; const R=planStudy(f); const cells=[];
-        for(const [k,n] of layers){ let extra=null; if(k==='df'||k==='da') extra=daylightFloor(f,1,2); else if(k==='ase') extra=aseFloor(f,true); else if(k==='flow') extra=flowField(f,R); const svg=planSVG(R,k,extra); try{ const url=await svgToJpeg(svg,760,600); cells.push({url,w:760,h:600,caption:n+(k==='sun'?' · '+DATES[LAB.S.impact.sun.date].label+' '+fmtHour(LAB.S.impact.sun.hour):'')}); }catch(e){ console.warn(e); } }
-        rows.push({label:'Level '+L+' · '+fmtI(R.area)+' m²',cells}); }
-      if(rows.length) customExtra.grids.push({title,cols:2,caption:'Each plan is drawn north up with the core; edges are coloured by face and solid where the zone is operable.',rows}); } }
-    status('Building the PDF…'); await LAB.report.make('custom'); status('');
-  }catch(e){ console.error(e); status('Report failed: '+(e.message||e)); }
-  finally{ b.disabled=false; }
-}
-function customReportData(){
-  const S=SW.report; const sun=sunResult?reportData('sun'):null, wind=windResult?reportData('wind'):null; const canEff=S.sections.efficiency&&LAB.energy&&LAB.floors, canEn=adv()&&S.sections.energy&&LAB.energy&&LAB.floors; const canRain=S.sections.rain&&LAB.rain&&LAB.rain.result; if(!sun&&!wind&&!canEff&&!canEn&&!canRain) return null;
-  const out={title:S.title||('Sun, wind and energy study · '+(adv()?'design development':'massing')),settings:[],stats:[],tables:[],notes:[],grids:[],charts:[]};
-  if(S.author) out.settings.push(['Prepared by',S.author]); out.settings.push(['Phase',adv()?'Design development':'Massing'],['Generated',new Date().toLocaleString()]);
-  const has=(title,keys)=>keys.some(k=>title.indexOf(k)>=0);
-  const F={shadow:['Sample days'],facade:['Direct sun on the massing','Readings','Façade zones','Solar result by façade zone','Photovoltaics'],daylight:['Daylight by floor'],wind:['Lawson','Annual mean speed','Readings','Wind with height','By wind sector'],vent:['Natural ventilation by month','Wind on terraces and roofs']};
-  const want=sec=>!!S.sections[sec]&&(adv()?sec!=='rain':!['daylight','vent','plans','energy'].includes(sec));
-  if(sun){ if(S.sections.summary) out.settings.push(...sun.settings.filter(x=>!/Mode/.test(x[0])).map(x=>['Sun · '+x[0],x[1]]));
-    if(want('shadow')||want('facade')||want('daylight')){ const pick=sun.stats.filter(x=>{ const t=x[0]; const isDL=/Daylit|daylight factor|Over-lit|Annual sunlight/.test(t); const isFac=/Heat through|blocked|PV yield|Direct sun received|Sunlight lost/.test(t); const isSh=!isDL&&!isFac; return (isSh&&want('shadow'))||(isFac&&want('facade'))||(isDL&&want('daylight')); }); out.stats.push(...pick); }
-    for(const t of sun.tables){ if((want('shadow')&&has(t.title,F.shadow))||(want('facade')&&has(t.title,F.facade))||(want('daylight')&&has(t.title,F.daylight))) out.tables.push(t); }
-    if(want('shadow')&&sun.grid) out.grids.push(sun.grid); if(want('method')) out.notes.push(...sun.notes); if(sun.overlay&&want('shadow')) out.overlay=sun.overlay; }
-  if(wind){ if(S.sections.summary) out.settings.push(...wind.settings.filter(x=>!/Mode/.test(x[0])).map(x=>['Wind · '+x[0],x[1]]));
-    if(want('wind')||want('vent')){ out.stats.push(...wind.stats.filter(x=>{ const v=/ventilation|Operable|ASHRAE|8 m/.test(x[0]); return (v&&want('vent'))||(!v&&want('wind')); })); }
-    for(const t of wind.tables){ if((want('wind')&&has(t.title,F.wind))||(want('vent')&&has(t.title,F.vent))) out.tables.push(t); }
-    if(want('method')) out.notes.push(...wind.notes); }
-  if(customExtra&&customExtra.grids.length&&want('plans')) out.grids.push(...customExtra.grids);
-  if(want('rain')&&LAB.rain&&LAB.rain.result){ try{ const Rn=LAB.rain.reportData(); if(Rn){ if(S.sections.summary) out.settings.push(...Rn.settings.map(x=>['Rain · '+x[0],x[1]])); out.stats.push(...Rn.stats.map(x=>['Rain · '+x[0],x[1]])); out.tables.push(...Rn.tables); if(Rn.chart) out.charts.push({svg:Rn.chart,title:'Monthly rain yield and irrigation need'}); if(want('method')) out.notes.push(...Rn.notes); } }catch(e){ console.error(e); } }
-  if(canEff){ try{ const F=LAB.energy.formReportData(); out.stats.push(...F.stats.map(x=>['Form · '+x[0],x[1]])); if(S.sections.summary) out.settings.push(...F.settings.filter(x=>/Reference|Typical/.test(x[0])).map(x=>['Form · '+x[0],x[1]])); out.tables.push(...F.tables); if(want('method')) out.notes.push(...F.notes.slice(0,3)); }catch(e){ console.error(e); } }
-  if(canEn){ try{ const En=LAB.energy.reportData(); out.stats.push(...En.stats.map(x=>['Energy · '+x[0],x[1]])); if(S.sections.summary) out.settings.push(...En.settings.map(x=>['Energy · '+x[0],x[1]])); out.charts.push({svg:En.chart,title:'Monthly energy by end use'}); out.tables.push(...En.tables); if(want('method')) out.notes.push(...En.notes); }catch(e){ console.error(e); } }
-  if(!S.sections.summary) out.settings=out.settings.slice(0,3);
-  return out;
-}
+function syncReportUI(){ const R=SW.report; if(!R) return; document.querySelectorAll('#rep-sections input').forEach(i=>{ i.checked=!!R.sections[i.dataset.k]; }); $('rep-title').value=R.title||''; $('rep-author').value=R.author||''; $('rep-levels').value=R.levels||''; }
+function reportLevels(){ const nF=LAB.floors?LAB.floors.length:1; const txt=(SW.report&&SW.report.levels||'').trim(); let L=txt?txt.split(/[,\s]+/).map(x=>parseInt(x,10)).filter(x=>x>=1&&x<=nF):[]; if(!L.length) L=[...new Set([Math.max(1,Math.round(nF*0.15)),Math.max(1,Math.round(nF*0.5)),Math.max(1,Math.round(nF*0.85))])]; return L.slice(0,4); }
+/* the ground studies are drawn on the site model for the capture, also in Design development where the ground overlay is otherwise off */
+let repOverlay=false;
+function siteMap(kind){ const W=LAB.S.impact.wind, view=W.view; repOverlay=true;
+  try{ if(kind==='sun') drawSunOverlay(); else if(kind==='wind'){ W.view='comfort'; drawWindOverlay(); } else if(kind==='rain'&&LAB.rain) LAB.rain.drawOverlay();
+    return LAB.captureView({plan:true,maxW:1200,labels:false,dist:900}); }
+  finally{ repOverlay=false; W.view=view; } }
+function restoreOverlay(){ if(adv()){ clearOverlay(); return; } const m=LAB.S.impact.mode; if(m==='sun'&&sunResult) drawSunOverlay(); else if(m==='wind'&&windResult) drawWindOverlay(); else if(m==='rain'&&LAB.rain&&LAB.rain.result) LAB.rain.drawOverlay(); else clearOverlay(); }
+const repTick=()=>new Promise(r=>setTimeout(r,12));
+async function pdfSpec(keys,status){
+  const V=LAB.viz, S=LAB.S, floors=LAB.floors, r=sunResult, w=windResult; if(!floors) return null; const has=k=>keys.includes(k);
+  const pc=v=>Math.round(v*100)+'%'; const KRs=tab=>{ try{ return keyItems(tab,true); }catch(e){ console.warn(e); return []; } };
+  const NR=(name,std,what)=>KR({name,std,val:'–',badge:'not run',tip:'Run '+what+' to add this.'});
+  const gfa=floors.reduce((s,f)=>s+f.area,0); const Rp=SW.report||{};
+  const spec={title:Rp.title||'Sun, wind and energy study',author:Rp.author||'',meta:[LAB.TYP[S.typology].name,S.height+' m',floors.length+' floors',fmtI(gfa)+' m² GFA',adv()?'Design development':'Massing'],sections:[]};
+  const levels=reportLevels(); const mid=levels[Math.floor(levels.length/2)];
+  // results the sections lean on, computed once if they are missing
+  if(has('summary')||has('daylight')){ if(!dlCache.rows||dlCache.key!==dlKey()){ status('Daylight on every floor…'); await repTick(); try{ daylightTower(); }catch(e){ console.warn(e); } }
+    if(!((r&&r.ase)||aseTowerRes)){ try{ await aseTower(status); }catch(e){ console.warn(e); } } }
+  let en=LAB.energy&&LAB.energy.last; if(!en&&LAB.energy){ try{ en=LAB.energy.model(floors); }catch(e){} }
+  const plan=async(L,layer,extra,caption)=>{ const f=floors[L-1]; const R=planStudy(f); return {svg:planSVG(R,layer,extra),caption}; };
+
+  if(has('summary')){ status('Summary…'); await repTick(); const iso=LAB.captureView({iso:true,maxW:1200,dist:S.height*2.3});
+    const dl=KRs('daylight'), ve=KRs('vent'), eg=KRs('energy'), rn=KRs('rain').filter(k=>/LEED/.test(k.std));
+    const groups=[{name:'EQ Daylight',items:dl},{name:'EQ Indoor air and comfort',items:ve},{name:'EA Energy · Vancouver targets',items:eg}];
+    if(rn.length) groups.push({name:'WE Water',items:rn});
+    const all=groups.flatMap(g=>g.items); const tally={ok:0,warn:0,bad:0,na:0}; for(const k of all) tally[k.status]=(tally[k.status]||0)+1;
+    const sda=dl.find(k=>/autonomy/.test(k.name)); const pts=sda&&/pt/.test(sda.badge)?parseInt(sda.badge,10):null;
+    spec.sections.push({key:'summary',title:'Summary',std:'LEED v4.1 · ASHRAE 62.1 and 55 · City of Vancouver energy targets',hero:iso,tally,points:pts,groups}); }
+
+  if(has('site')){ const groups=[];
+    status('Site · sun…'); await repTick();
+    if(r&&r.newSh){ const sd=S.impact.sun, D=DATES[sd.date]; const maxV=r.scope==='period'?Math.max(4,800*r.period.days/365):Math.max(2,r.hours*0.8); const map=siteMap('sun');
+      const figs=[{img:map,caption:'New shadow on the ground',legend:[['#F2C46B',r.th[0]+' h'],['#B6799E',Math.round(maxV/2)+' h'],['#7A2E8E',Math.round(maxV)+' h+']]},{svg:shadowRangeSVG(r),caption:'Shadow range · '+D.label}];
+      const fr=r.frames&&r.frames[0]&&r.frames[0].frames.filter(c=>c.url); const strip=fr&&fr.length?[fr[0],fr[Math.floor(fr.length/2)],fr[fr.length-1]].filter((c,i,a)=>a.indexOf(c)===i).map(c=>({img:{url:c.url,w:c.w,h:c.hh},caption:(c.h<10?'0':'')+c.h+':00 · '+r.frames[0].label})):[];
+      groups.push({name:'Sun',color:'#D9A441',tiles:KRs('sun'),figs,strip}); }
+    else groups.push({name:'Sun',color:'#D9A441',tiles:[NR('Plazas in new shadow','Public realm','the sun study')]});
+    status('Site · wind…'); await repTick();
+    if(w&&w.cats){ const map=siteMap('wind');
+      const figs=[{img:map,caption:'Lawson comfort at pedestrian level',legend:BANDS.map((n,i)=>[BAND_COL[i],n])},{svg:roseSVG(roseFor(periodInfo())),caption:'Wind rose · '+(periodInfo().full?'whole year':periodInfo().label)}];
+      groups.push({name:'Wind',color:'#2E8C96',tiles:KRs('wind'),figs}); }
+    else groups.push({name:'Wind',color:'#2E8C96',tiles:[NR('Ground calm enough to stand','Lawson','the wind study')]});
+    if(LAB.rain&&LAB.rain.result){ status('Site · rain…'); await repTick(); const map=siteMap('rain'); let ch=[]; try{ const Rn=LAB.rain.reportData(); ch=(Rn.charts||[]).filter(c=>/Collected by month/.test(c.title)).map(c=>({svg:c.svg,caption:c.title})); }catch(e){}
+      groups.push({name:'Rain',color:'#3C82CD',tiles:KRs('rain'),figs:[{img:map,caption:'Design storm on the site',legend:[['#3C82CD','flow paths'],['#14468F','ponds'],['#A8B2C0','kept dry']]}].concat(ch)}); }
+    else groups.push({name:'Rain',color:'#3C82CD',tiles:[NR('Wettest face','ISO 15927-3','the rain study (Massing)')]});
+    restoreOverlay();
+    spec.sections.push({key:'site',title:'Site analysis',std:'New shadow on public space · Lawson pedestrian comfort · ISO 15927-3 driving rain',groups}); }
+
+  if(has('daylight')){ const groups=[]; const D=dlCache.key===dlKey()?dlCache.rows:null, ase=(r&&r.ase)||aseTowerRes;
+    const charts=[]; if(D) charts.push({svg:floorBars(D.rows,x=>x.pctLit,'#D9A441','sDA per floor',0.55),caption:'Daylight autonomy per floor · line at 55%'}); if(ase&&ase.rows) charts.push({svg:floorBars(ase.rows,x=>x.pct,'#B8362B','ASE per floor',0.10),caption:'Sunlight exposure per floor · line at 10%'});
+    groups.push({name:'Daylight',color:'#D9A441',tiles:KRs('daylight'),figs:charts});
+    const rows=[]; for(const L of levels){ status('Daylight plans · L'+L+'…'); await repTick(); const f=floors[L-1]; const dl=daylightFloor(f,1,2), as=aseFloor(f,true);
+      rows.push({label:'L'+L,figs:[await plan(L,'da',dl,'Daylight autonomy · sDA '+pc(dl.pctLit)),await plan(L,'df',dl,'Daylight factor · mean '+(dl.mean*100).toFixed(1)+'%'),await plan(L,'ase',as,'Sun exposure · '+pc(as.pctOver)+' over 250 h')]}); }
+    groups.push({name:'On the floor plate',color:'#D9A441',rows});
+    if(r&&r.dayData){ const A=solarStudy(r); const eunit=r.perDay?'kWh/day':'kWh';
+      const tiles=[KR({name:'Sun blocked by shading',std:'Façade devices',val:pc(A.blocked),status:A.blocked>=0.3?'ok':A.blocked>=0.15?'warn':'bad',badge:A.blocked>=0.3?'strong':A.blocked>=0.15?'some':'little',bar:{max:1,v:A.blocked,zone:[0.3,1],ticks:[[0.3,'30%']]}}),
+        KR({name:'Heat through glazing',std:'with devices',val:fmtI(A.shTot),unit:eunit,bar:{max:Math.max(1,A.unTot),v:A.shTot,ticks:[[A.unTot,'unshaded']]}}),
+        KR({name:'Low-sun glare',std:'worst zone',val:fmtI(Math.max(0,...A.zones.map(Z=>Z.glare))),unit:'h',status:'na'})];
+      const figs=[{svg:V.pairs(A.zones.map(Z=>({label:Z.label+' · '+Z.st.name,a:Z.sh,b:Z.un})),{title:'Heat through glazing by zone, '+eunit,names:['with devices','without'],colors:['#D9A441','#9AA5B1'],dec:0,labelW:150}),caption:'What each zone’s shading saves'}];
+      if(r.floorFace) figs.push({svg:facadeMapSVG(r),caption:'Sun hours on each face by floor'});
+      groups.push({name:'Sun shading strategy',color:'#C8552D',tiles,figs}); }
+    else groups.push({name:'Sun shading strategy',color:'#C8552D',tiles:[NR('Sun blocked by shading','Façade devices','the sun study')]});
+    spec.sections.push({key:'daylight',title:'Daylight',std:'LEED v4.1 EQ Daylight (sDA300/50%, ASE1000/250h) · EN 17037 daylight factor',groups}); }
+
+  if(has('vent')){ const groups=[]; const figs=[]; if(w&&w.vent) figs.push({svg:V.months([{name:'windows can do the work',color:'#2E8C96',values:w.vent.rows.map(x=>x.vent)},{name:'hours in period',color:'#DDE3E8',values:w.vent.rows.map(x=>x.hours)}],{title:'Natural-ventilation hours by month'}),caption:'Hours the windows keep the floor comfortable'});
+    groups.push({name:'Openings and comfort',color:'#2E8C96',tiles:KRs('vent'),figs});
+    const flow=[], reach=[]; let mech=false;
+    for(const L of levels){ status('Air plans · L'+L+'…'); await repTick(); const f=floors[L-1]; let R=planStudy(f), F=flowField(f,R), lim=false; mech=F.sys==='mech';
+      // windows shut by the wind at this height: draw the air at the strongest wind they stay open in, from the prevailing direction
+      if(!mech&&!F.on&&!R.windowsOpen){ const W=S.impact.wind, keep={annual:W.annual,dir:W.dir,speed:W.speed}; const dir=W.annual?roseFor(periodInfo()).slice().sort((a,b)=>b.f-a.f)[0].dir:W.dir; const zc=f.z+f.h/2;
+        W.annual=false; W.dir=dir; W.speed=0.9*R.umax/1.8/Math.pow(Math.max(10,zc)/10,ALPHA); try{ R=planStudy(f); F=flowField(f,R); lim=true; } finally{ Object.assign(W,keep); } }
+      flow.push({svg:planSVG(R,'flow',F),caption:'L'+L+' · '+(!F.on?(F.why||'windows closed'):F.sys==='mech'?F.diff.length+' diffusers':(F.breath?'single-sided, reaches '+F.lim+' m':(R.ach>0?R.ach.toFixed(1)+' ach':'cross flow'))+(lim?' · at the windows-open limit':''))});
+      reach.push({svg:planSVG(R,'reach',null),caption:'L'+L+' · '+(R.area?Math.round(R.aWithin8/R.area*100):0)+'% within 8 m'}); }
+    groups.push({name:mech?'Where the air goes · mechanical':'Where the air goes · open windows',color:'#2E8C96',rows:[{label:'',figs:flow}],legend:mech?[['#CFE6EC','air reaches'],[FLOW_COL.sup,'supply'],[FLOW_COL.ret,'return']]:[['#CFE6EC','air reaches'],[FLOW_COL.in,'air in'],[FLOW_COL.out,'air out']]});
+    groups.push({name:'Reach of the openings',color:'#2E8C96',rows:[{label:'',figs:reach}],legend:[[rampReach(1),'within 8 m'],[rampReach(9),'within the depth rule'],[rampReach(99),'out of reach']]});
+    spec.sections.push({key:'vent',title:'Ventilation',std:'ASHRAE 62.1 natural ventilation (4% openable, 8 m) · ASHRAE 55 adaptive comfort · CIBSE AM10',groups}); }
+
+  if(has('energy')){ const groups=[]; status('Energy…'); await repTick();
+    if(en){ const figs=[]; try{ figs.push({svg:LAB.energy.chartSVG(en,false),caption:'Energy by month and end use'}); }catch(e){}
+      try{ const LR=LAB.energy.lossRows(en); figs.push({svg:V.hbars(LR.rows.slice(0,9).map(x=>({label:x.label,v:x.v,color:x.color,text:x.v.toFixed(1)})),{title:'Where heat is lost · kWh per m² of floor a year',labelW:110,dec:1}),caption:'Heat loss by path, largest first'}); }catch(e){ console.warn(e); }
+      groups.push({name:'Energy use',color:'#B3362B',tiles:KRs('energy'),figs}); }
+    else groups.push({name:'Energy use',color:'#B3362B',tiles:[NR('Energy use','TEUI','the energy model')]});
+    const L=mid, f=floors[L-1]; const R=planStudy(f); const TH=SW.therm||(SW.therm={sys:'full',when:'year'}); const when=TH.when; TH.when='year';
+    try{ const pick=['none','heat','full']; const cols=T_COL.map((c,i)=>({name:T_NAME[i],color:c})); const figs=[], sysRows=[];
+      for(const [k,n] of THERM_SYS){ const X=thermalFloor(f,R,k); if(!X) continue; const A=X.zones.reduce((a,z)=>a+z.area,0)||1; const parts=[0,1,2,3,4].map(i=>X.zones.reduce((a,z)=>a+(z.occN?z.bins[i]/z.occN:0)*z.area,0)/A); sysRows.push({label:n,parts});
+        if(pick.includes(k)) figs.push({svg:planSVG(R,'temp',X),caption:n+' · '+pc(parts[2])+' comfortable'}); }
+      if(figs.length){ groups.push({name:'Indoor temperature · L'+L,color:'#B3362B',rows:[{label:'',figs}],legend:COMFORT_KEY.map(([c,n])=>[c,n]),after:[{svg:V.stack(sysRows,cols,{title:'L'+L+' · occupied hours by indoor temperature',labelW:134}),caption:'The same floor with each heating and cooling option',wide:true}]}); } }
+    catch(e){ console.warn(e); } finally{ TH.when=when; }
+    const ef=KRs('eff'); if(ef.length) groups.push({name:'Form',color:'#6F7983',tiles:ef});
+    spec.sections.push({key:'energy',title:'Energy and temperature',std:'City of Vancouver TEUI, TEDI, GHGI targets · ISO 13790 hourly zones · comfort 20–26 °C',groups}); }
+  spec.sections.forEach(x=>{ x.num=REP_SECTIONS.findIndex(q=>q[0]===x.key)+1; });
+  return spec; }
+async function pdfReport(keys){ const b=$('rep-make'); const st=$('run-all-status'); const status=msg=>{ if(st) st.textContent=msg; };
+  keys=keys||REP_SECTIONS.map(x=>x[0]).filter(k=>SW.report.sections[k]); if(!keys.length){ status('Pick at least one section.'); return; }
+  if(b) b.disabled=true;
+  try{ const spec=await pdfSpec(keys,status); if(!spec){ status('Build the massing first.'); return; } status('Laying out the PDF…'); await repTick(); await LAB.report.visual(spec); status(''); }
+  catch(e){ console.error(e); status('Report failed: '+(e.message||e)); restoreOverlay(); }
+  finally{ if(b) b.disabled=false; } }
 /* ---------- hooks and boot ---------- */
 function autoRun(n){ if(!SW||sunResult||busy) return; if((!LAB.site||CLIMATE.pending)&&n<12){ setTimeout(()=>autoRun(n+1),500); return; } if(LAB.S.impact.mode==='sun'&&LAB.S.impact.sun.scope==='date'){ try{ runCurrent(true); }catch(e){ console.warn(e); } } }
 LAB.hooks.afterUpdate.push(floors=>{ if(!SW) return; siteRaster=null; syncGeometry(); updateGeomInfo(); syncZoneUI(); try{ renderPlan(); }catch(e){ console.error(e); } if(LAB.rain&&LAB.rain.result){ stale.rain=true; showStale(); if(LAB.S.impact.mode==='rain') renderRain(); } if(LAB.S.impact.mode==='sun'){ applySunView(); if(sunResult){ stale.sun=true; showStale(); } } if(LAB.S.impact.mode==='wind'&&windResult){ stale.wind=true; showStale(); } });
@@ -2230,5 +2283,5 @@ LAB.sim={init(){ initState(); buildUI(); placeControls(); syncGeometry(); update
     setTimeout(()=>autoRun(0),900); },
   showParts, showExploded, framePreview, applyModelWWR, sunPos, runCurrent, runSunStudy, runWindStudy, setMode, setStudioMode, reportData, periodInfo, roseFor, DATES, STRATS, solarStudy, band, ventStudy, daylightTower, daylightTowerCached, daylightFloor, aseFloor, aseTower, ventTowerQuick, planStudy, terraceWind, windProfile, zoneFor, zoneGlazing, energyChanged, exposurePass, setOverlay, dni, terrainDEM, towerRaster, plazaCellsAt, buildSiteRaster:()=>{ if(!siteRaster) buildSiteRaster(); return siteRaster; }, DOM,
   markStale(kind){ stale[kind]=true; showStale(); }, rerenderRain:renderRain, renderSun:()=>renderSun(sunResult), renderWind:r=>renderWind(r||windResult), afterImport(){ if(!SW) return; updateGeomInfo(); if(adv()) setTimeout(maybeSliceDialog,0); },
-  get windResult(){return windResult;}, get sunResult(){return sunResult;}, get SW(){return SW;}};
+  pdfReport, get windResult(){return windResult;}, get sunResult(){return sunResult;}, get SW(){return SW;}};
 })();

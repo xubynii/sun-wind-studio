@@ -319,6 +319,6 @@ LAB.energy={
     LAB.controlsFor($('energy-env'),ENV_P,'en',()=>LAB.S.energy,()=>{ LAB.syncFor($('energy-env'),ENV_P,'en',LAB.S.energy); if(LAB.sim&&LAB.sim.energyChanged) LAB.sim.energyChanged(); });
     LAB.controlsFor($('energy-sys'),SYS_P,'en',()=>LAB.S.energy,()=>{ LAB.syncFor($('energy-sys'),SYS_P,'en',LAB.S.energy); if(LAB.sim&&LAB.sim.energyChanged) LAB.sim.energyChanged(); });
     LAB.syncFor($('energy-env'),ENV_P,'en',LAB.S.energy); LAB.syncFor($('energy-sys'),SYS_P,'en',LAB.S.energy); },
-  formStudy, formHTML, formReportData:formReport, energyHTML, thermalZones, lossHTML, T_BINS, model, modelMonthly, reportData:energyReport, TARGETS, USES, chartSVG, get last(){return last;},
+  formStudy, formHTML, formReportData:formReport, energyHTML, thermalZones, lossHTML, lossRows, lossRows, T_BINS, model, modelMonthly, reportData:energyReport, TARGETS, USES, chartSVG, get last(){return last;},
 };
 })();
