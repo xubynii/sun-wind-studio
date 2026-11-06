@@ -322,12 +322,12 @@ function sectionCut(){ const G=secGeom(), F=LAB.floors||[], B=belowSorted(); con
 function el(tag,attrs,parent){ const e=document.createElementNS(NS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); if(parent) parent.appendChild(e); return e; }
 function sheetEls(){ let s=document.getElementById('sheet'); if(s) return s; const vp=$('viewport'); const w=document.createElement('div'); w.id='sheet-wash'; w.className='sheet-wash'; w.hidden=true; vp.insertBefore(w,vp.querySelector('.compass'));
   s=document.createElementNS(NS,'svg'); s.id='sheet'; s.setAttribute('class','sheet'); vp.insertBefore(s,vp.querySelector('.compass')); return s; }
-function hideSheet(){ if(LAB.program) LAB.program.showBar(false); const s=document.getElementById('sheet'); if(s) s.style.display='none'; const w=document.getElementById('sheet-wash'); if(w) w.hidden=true; const k=document.getElementById('keyplan'); if(k) k.hidden=true; const pp=document.getElementById('planpanel'); if(pp) pp.hidden=true; }
+function hideSheet(){ flowAnimSync(null); if(LAB.program) LAB.program.showBar(false); const s=document.getElementById('sheet'); if(s) s.style.display='none'; const w=document.getElementById('sheet-wash'); if(w) w.hidden=true; const k=document.getElementById('keyplan'); if(k) k.hidden=true; const pp=document.getElementById('planpanel'); if(pp) pp.hidden=true; }
 function scaleBar(svg,kx){ const ink='#1F2227';const m10=Math.abs(kx)*10; if(m10>8){ const bx=18, by=58; let n=10; while(Math.abs(kx)*n<60) n*=2; while(Math.abs(kx)*n>160&&n>2) n/=2; const L2=Math.abs(kx)*n; el('rect',{x:bx,y:by-10,width:L2+40,height:22,fill:'rgba(255,255,255,.85)'},svg); el('rect',{x:bx+4,y:by-3,width:L2/2,height:4,fill:ink},svg); el('rect',{x:bx+4+L2/2,y:by-3,width:L2/2,height:4,fill:'#fff',stroke:ink,'stroke-width':1},svg); const t=el('text',{x:bx+8+L2,y:by+2,fill:ink,'font-size':10,'font-family':'var(--font-m),monospace'},svg); t.textContent=n+' m'; } }
 function drawSheet(){ const o=LAB.orbit; const planOn=planActive()&&!clip.capturing; if(!view.ortho||clip.capturing||(o.phi<1.5&&!planOn)){ hideSheet(); if(view.ortho&&o.phi<0.05&&!clip.capturing) planPanelSync(); return; }
   const svg=sheetEls(), cv=LAB.renderer.domElement, vp=$('viewport'); const cr=cv.getBoundingClientRect(), vr=vp.getBoundingClientRect(); const W=cr.width, H=cr.height;
   Object.assign(svg.style,{display:'block',left:(cr.left-vr.left)+'px',top:(cr.top-vr.top)+'px',width:W+'px',height:H+'px'}); svg.setAttribute('viewBox',`0 0 ${W} ${H}`); svg.innerHTML='';
-  if(planOn){ document.getElementById('sheet-wash').hidden=false; const k=drawPlan(svg,W,H); scaleBar(svg,k); planPanelSync(); const kp=document.getElementById('keyplan'); if(kp) kp.hidden=true; return; }
+  if(planOn){ document.getElementById('sheet-wash').hidden=false; const k=drawPlan(svg,W,H); scaleBar(svg,k); planPanelSync(); flowAnimSync(svg); const kp=document.getElementById('keyplan'); if(kp) kp.hidden=true; return; }
   { const pp=document.getElementById('planpanel'); if(pp) pp.hidden=true; }
   document.getElementById('sheet-wash').hidden=!view.section;
   const S=LAB.S, sec=view.section; let G, org, r;
@@ -542,7 +542,7 @@ function drawPlan(svg,W,H){ const f=planFloor(); const S=LAB.S, zc=planCutZ(f), 
   if(fb&&!below) el('path',{d:loopsPath(fb),fill:'#F4F3F0',stroke:'#7A8088','stroke-width':0.7,'fill-rule':'evenodd'},svg);
   el('path',{d:loopsPath(f),fill:'#FFFFFF','fill-rule':'evenodd'},svg);
   if(adv()&&!below&&PLAN_OVL&&PLAN_OVL.f===f&&PLAN_OVL.html){ if(!PLAN_OVL.node){ const g=document.createElementNS(NS,'g'); g.setAttribute('class','plan-ovl'); g.setAttribute('shape-rendering','crispEdges'); g.innerHTML=PLAN_OVL.html; PLAN_OVL.node=g; }
-    const o0=Lw(f,0,0), a1=Lw(f,1,0), b1=Lw(f,0,1); PLAN_OVL.node.setAttribute('transform',`matrix(${(a1[0]-o0[0]).toFixed(4)} ${(a1[1]-o0[1]).toFixed(4)} ${(b1[0]-o0[0]).toFixed(4)} ${(b1[1]-o0[1]).toFixed(4)} ${o0[0].toFixed(2)} ${o0[1].toFixed(2)})`); svg.appendChild(PLAN_OVL.node); }
+    const o0=Lw(f,0,0), a1=Lw(f,1,0), b1=Lw(f,0,1); PLAN_OVL.mat=[a1[0]-o0[0],a1[1]-o0[1],b1[0]-o0[0],b1[1]-o0[1],o0[0],o0[1]]; PLAN_OVL.node.setAttribute('transform',`matrix(${(a1[0]-o0[0]).toFixed(4)} ${(a1[1]-o0[1]).toFixed(4)} ${(b1[0]-o0[0]).toFixed(4)} ${(b1[1]-o0[1]).toFixed(4)} ${o0[0].toFixed(2)} ${o0[1].toFixed(2)})`); svg.appendChild(PLAN_OVL.node); }
   const cut=sliceParts(zc)||{structure:[],core:[],stair:[],facade:[],window:[]}; const has=c=>cut[c].some(q=>q.loops.length||q.open.length);
   const tiny=k<1.2; const TW=below?0.4:0.3; const poche={fill:ink,stroke:ink,'stroke-width':0.6};
   const lineL=(g,a,b,attrs)=>{ const A=Lw(g,a[0],a[1]), B=Lw(g,b[0],b[1]); return el('line',Object.assign({x1:A[0].toFixed(1),y1:A[1].toFixed(1),x2:B[0].toFixed(1),y2:B[1].toFixed(1)},attrs),svg); };
@@ -1616,7 +1616,7 @@ function reportData(kind){
   return null;
 }
 
-/* ---------- floor plan: the sun patch on the plate through each zone's glass and device, and air paths through operable faces ---------- */
+/* ---------- floor plan: the sun patch on the plate through each zone's glass and device, and the reach of operable faces ---------- */
 const FACE_COL={N:'#5B7FA6',E:'#D9A441',S:'#D06A4B',W:'#8C5B90'};
 function stratParts(z,alt,azDeg,faceAz,gh){ const st=STRATS[z.strat]; const D=z.depth; let dim=st.mod||1, cut=0; if(!st.device||D<=0) return {cut,dim};
   const hsa=((azDeg-faceAz)+540)%360-180; const c=Math.cos(hsa*Math.PI/180); if(c<=0.02) return {cut,dim};
@@ -1749,15 +1749,14 @@ const rampASE=v=>{ const t=Math.max(0,Math.min(1,v/500)); const a=[240,224,190],
 let planAse={key:null,res:null}, planDL={key:null,res:null};
 const rampReach=d=>d<=8?'rgba(46,140,150,0.72)':d<=60?'rgba(46,140,150,0.32)':'rgba(184,54,43,0.16)';
 /* the result layer's cells in the floor's own axes (1 unit = 1 m): drawn in the right-panel plan and over the viewport plan */
-function planCells(R,layer,extra){ const f=R.f, m=f.mask; let s='';
+function planCells(R,layer,extra,vp){ const f=R.f, m=f.mask; let s='';
   const cell=(ix,iy,fill,op)=>`<rect x="${(m.x0+ix).toFixed(1)}" y="${(m.y0+iy).toFixed(1)}" width="${extra&&extra.step||1}" height="${extra&&extra.step||1}" fill="${fill}"${op!=null?` fill-opacity="${op}"`:''}/>`;
   if(layer==='sun'){ for(let k=0;k<R.litNo.length;k+=2) s+=`<rect x="${(m.x0+R.litNo[k]).toFixed(1)}" y="${(m.y0+R.litNo[k+1]).toFixed(1)}" width="1" height="1" fill="none" stroke="var(--sun)" stroke-opacity="0.35" stroke-width="0.15"/>`; for(let k=0;k<R.lit.length;k+=3) s+=cell(R.lit[k],R.lit[k+1],'var(--sun)',(0.3+0.6*R.lit[k+2]).toFixed(2)); }
   else if(layer==='da'&&extra){ const d=extra.da, st=extra.step; for(let iy=0;iy<m.ny;iy+=st) for(let ix=0;ix<m.nx;ix+=st){ const k=iy*m.nx+ix; if(extra.df[k]>0||d[k]>0) s+=cell(ix,iy,rampDA(d[k])); } }
   else if(layer==='df'&&extra){ const d=extra.df, st=extra.step; for(let iy=0;iy<m.ny;iy+=st) for(let ix=0;ix<m.nx;ix+=st){ const v=d[iy*m.nx+ix]; if(v>0) s+=cell(ix,iy,rampDF(v)); } }
   else if(layer==='ase'&&extra){ const d=extra.hrs, st=extra.step; for(let iy=0;iy<m.ny;iy+=st) for(let ix=0;ix<m.nx;ix+=st){ const v=d[iy*m.nx+ix]; if(v>10) s+=cell(ix,iy,rampASE(v)); } }
   else if(layer==='reach'){ const lim=R.mode==='cross'?R.limCross:R.mode==='single'?R.limSingle:R.limStack; for(let iy=0;iy<m.ny;iy++) for(let ix=0;ix<m.nx;ix++){ const x=m.x0+ix+0.5, y=m.y0+iy+0.5; if(!(x<=f.w/2&&y<=f.d/2&&m.cells[iy*m.nx+ix])) continue; if(Math.abs(x-R.cc.x)<=R.ch&&Math.abs(y-R.cc.y)<=R.ch) continue; const d=R.near[iy*m.nx+ix]; s+=cell(ix,iy,rampReach(d<=0?99:d<=8?1:d<=lim?9:99)); } }
-  else if(layer==='air'){ for(let k=0;k<R.vent.length;k+=2) s+=cell(R.vent[k],R.vent[k+1],'var(--wind)','0.28');
-    if(R.mode==='cross'&&R.vent.length){ for(let k=0;k<R.vent.length;k+=2){ const ix=R.vent[k], iy=R.vent[k+1]; if(ix%4!==1||iy%4!==1) continue; const x=m.x0+ix+0.5, y=m.y0+iy+0.5, L=1.6, ax=x-R.fl.x*L/2, ay=y-R.fl.y*L/2, bx=x+R.fl.x*L/2, by=y+R.fl.y*L/2; const px=-R.fl.y*0.45, py=R.fl.x*0.45; s+=`<path d="M${ax.toFixed(2)},${ay.toFixed(2)}L${bx.toFixed(2)},${by.toFixed(2)}M${(bx-R.fl.x*0.6+px).toFixed(2)},${(by-R.fl.y*0.6+py).toFixed(2)}L${bx.toFixed(2)},${by.toFixed(2)}L${(bx-R.fl.x*0.6-px).toFixed(2)},${(by-R.fl.y*0.6-py).toFixed(2)}" fill="none" stroke="var(--wind)" stroke-width="0.3" stroke-linecap="round" stroke-linejoin="round"/>`; } } }
+  else if(layer==='flow'&&extra) s+=flowCells(extra,!!vp);
   return s; }
 function planSVG(R,layer,extra){
   const f=R.f, m=f.mask; const Rr=Math.hypot(f.w,f.d)/2+4; const VW=380, VH=300; const sc=Math.min((VW-70)/(2*Rr),(VH-40)/(2*Rr)); const cx0=VW/2-20, cy0=VH/2; const rotDeg=f.rot*180/Math.PI;
@@ -1770,18 +1769,123 @@ function planSVG(R,layer,extra){
   s+=`</g>`;
   const ax=VW-32, ay=34; s+=`<line x1="${ax}" y1="${ay+14}" x2="${ax}" y2="${ay-10}" stroke="var(--ink)" stroke-width="1"/><path d="M${ax-4},${ay-4}L${ax},${ay-12}L${ax+4},${ay-4}" fill="var(--ink)"/><text x="${ax}" y="${ay+26}" text-anchor="middle">N</text>`;
   if(layer==='sun'&&R.sunUp){ const sx=cx0+Math.sin(R.p.az)*(Rr*sc+14), sy=cy0-Math.cos(R.p.az)*(Rr*sc+14); s+=`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="6" fill="var(--sun)"/><line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${(cx0+Math.sin(R.p.az)*(Rr*sc)).toFixed(1)}" y2="${(cy0-Math.cos(R.p.az)*(Rr*sc)).toFixed(1)}" stroke="var(--sun)" stroke-width="1.5"/>`; }
-  if(layer==='air'){ const wa=R.wdir*Math.PI/180; const wx=cx0+Math.sin(wa)*(Rr*sc+20), wy=cy0-Math.cos(wa)*(Rr*sc+20), tx=cx0+Math.sin(wa)*(Rr*sc+4), ty=cy0-Math.cos(wa)*(Rr*sc+4); const dx=tx-wx, dy=ty-wy, L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L; s+=`<line x1="${wx.toFixed(1)}" y1="${wy.toFixed(1)}" x2="${tx.toFixed(1)}" y2="${ty.toFixed(1)}" stroke="var(--wind)" stroke-width="2"/><path d="M${(tx-ux*6-uy*4).toFixed(1)},${(ty-uy*6+ux*4).toFixed(1)}L${tx.toFixed(1)},${ty.toFixed(1)}L${(tx-ux*6+uy*4).toFixed(1)},${(ty-uy*6-ux*4).toFixed(1)}" fill="var(--wind)"/>`; }
+  if(layer==='flow'&&extra&&extra.sys==='nat'){ const wa=R.wdir*Math.PI/180; const wx=cx0+Math.sin(wa)*(Rr*sc+20), wy=cy0-Math.cos(wa)*(Rr*sc+20), tx=cx0+Math.sin(wa)*(Rr*sc+4), ty=cy0-Math.cos(wa)*(Rr*sc+4); const dx=tx-wx, dy=ty-wy, L=Math.hypot(dx,dy)||1, ux=dx/L, uy=dy/L; s+=`<line x1="${wx.toFixed(1)}" y1="${wy.toFixed(1)}" x2="${tx.toFixed(1)}" y2="${ty.toFixed(1)}" stroke="var(--wind)" stroke-width="2"/><path d="M${(tx-ux*6-uy*4).toFixed(1)},${(ty-uy*6+ux*4).toFixed(1)}L${tx.toFixed(1)},${ty.toFixed(1)}L${(tx-ux*6+uy*4).toFixed(1)},${(ty-uy*6-ux*4).toFixed(1)}" fill="var(--wind)"/>`; }
   if(layer==='df'||layer==='ase'||layer==='da'){ const x0=VW-60, y0=VH-70; const rp=t=>layer==='df'?rampDF(t*0.05):layer==='da'?rampDA(t):rampASE(t*500); const lab=layer==='df'?['0','2%','5%+']:layer==='da'?['0%','50%','100%']:['0 h','250','500 h+']; for(let i=0;i<24;i++){ const t=i/23; s+=`<rect x="${x0}" y="${(y0+46-i*2).toFixed(1)}" width="10" height="2.1" fill="${rp(t)}"/>`; } s+=`<text x="${x0+13}" y="${y0+50}">${lab[0]}</text><text x="${x0+13}" y="${y0+26}">${lab[1]}</text><text x="${x0+13}" y="${y0+2}">${lab[2]}</text>`; }
   s+=`<text x="8" y="${VH-8}">L${R.lvl} · ${f.w.toFixed(0)} × ${f.d.toFixed(0)} m · ${fmtI(R.area)} m² floor</text>`;
   return s+'</svg>';
 }
-const PLAN_SETS={sun:[['da','Daylight autonomy'],['df','Daylight factor'],['ase','Annual sun exposure']],air:[['air','Air paths now'],['reach','Reach of openings']]};
+/* ---------- air flow on a floor plate: where the air goes through the operable windows (wind pressure, and the stack in the core) or a mechanical supply and return.
+   The open plan is a pressure network on the 1 m plan grid, as CONTAM treats rooms: each floor cell is a node linked to its neighbours; an operable window links its
+   edge cell to the outside at the face's wind pressure coefficient through a smaller conductance (the opening carries most of the pressure drop); the stack strategy
+   adds a draw at the core shaft. Mechanical: equal supply at diffusers on a 5 m grid, returns at the core walls. Solved by over-relaxed Gauss–Seidel; speeds are scaled
+   to the orifice flow at the inlets (Q = 0.6 · A · U · √ΔCp) or to the outdoor-air rate. With every open window at the same pressure the air does not cross the plate:
+   it is drawn as single-sided exchange reaching 2.5 floor heights (CIBSE AM10). ---------- */
+const FLOW_COL={in:'#1F7FA6',out:'#E07A2E',sup:'#2F55A4',ret:'#8B5FB0'};
+const rampFlow=t=>{ t=Math.max(0,Math.min(1,t)); const a=[238,244,245], b=[120,190,200], c=[22,92,128]; const col=t<0.5?lerpC(a,b,t/0.5):lerpC(b,c,(t-0.5)/0.5); return 'rgb('+col.map(Math.round).join(',')+')'; };
+const FD4=[[1,0],[-1,0],[0,1],[0,-1]];
+let flowCache={key:null,res:null};
+function flowField(f,R){
+  const S=LAB.S, V=SW.vent, FL=SW.flow||(SW.flow={sys:'nat'}), mech=FL.sys==='mech', rate=(S.energy&&S.energy.vent)||0.4, supply=Math.max(rate,FL.supply||5);
+  const key=JSON.stringify([f.i,f.z,f.w,f.d,f.rot,SW.zones,V,FL.sys,supply,R.wdir,+R.Uz.toFixed(2),R.windowsOpen,rate,S.posX,S.posY,S.rotDeg,LAB.floors&&LAB.floors.length]); if(flowCache.key===key&&flowCache.f===f) return flowCache.res;
+  const m=f.mask, nx=m.nx, ny=m.ny, N=nx*ny, W2=f.w/2, D2=f.d/2, lvl=f.i+1, hh=R.hh;
+  const solid=(cx,cy)=>cx>=0&&cy>=0&&cx<nx&&cy<ny&&(m.x0+cx+0.5<=W2)&&(m.y0+cy+0.5<=D2)&&!!m.cells[cy*nx+cx];
+  const inCore=(cx,cy)=>Math.abs(m.x0+cx+0.5-R.cc.x)<=R.ch&&Math.abs(m.y0+cy+0.5-R.cc.y)<=R.ch;
+  const fluid=new Uint8Array(N); let area=0; for(let iy=0;iy<ny;iy++) for(let ix=0;ix<nx;ix++) if(solid(ix,iy)&&!inCore(ix,iy)){ fluid[iy*nx+ix]=1; area++; }
+  const cpOf=o=>cpFace(R.wdir,FACE_AZ[o]+(LAB.phys?LAB.phys.faceOffset(f.rot):0));
+  const res={sys:mech?'mech':'nat',nx,ny,x0:m.x0,y0:m.y0,fluid,area,hh,links:[],diff:[],vx:new Float32Array(N),vy:new Float32Array(N),spd:new Float32Array(N),uRef:0.1,mean:0,still:1,on:true,why:'',breath:false,shaft:false,near:R.near,lim:R.limSingle,Q:0,ach:0,rate,supply};
+  // façade distance (for diffuser placement) and the links to the outside, the shaft or the returns
+  const bG=new Float32Array(N), bGP=new Float32Array(N), src=new Float32Array(N);
+  let anyOpenFace=false; const faceOpen={}; for(const o of ORI){ const z=zoneFor(o,lvl); faceOpen[o]=z.operable&&R.edgeLen[o]>0; if(faceOpen[o]) anyOpenFace=true; }
+  for(let iy=0;iy<ny;iy++) for(let ix=0;ix<nx;ix++){ const k=iy*nx+ix; if(!fluid[k]) continue;
+    FD4.forEach(([dx,dy],d)=>{ const jx=ix+dx, jy=iy+dy; if(solid(jx,jy)){ if(!inCore(jx,jy)) return; if(mech){ res.links.push({k,d,g:1,p:0,kind:'ret'}); } else if(V.mode==='stack'&&R.windowsOpen){ res.links.push({k,d,g:0.12,p:-0.8,kind:'shaft'}); res.shaft=true; } return; }
+      if(mech||!R.windowsOpen) return; const o=cardinalOf(dx,dy,f.rot); if(!faceOpen[o]) return; const z=zoneFor(o,lvl); const g=0.25*Math.min(2,Math.max(0.2,z.wwr*(V.open||0.1)/0.06)); res.links.push({k,d,g,p:cpOf(o),kind:'win',o,frac:z.wwr*(V.open||0.1)}); }); }
+  for(const L of res.links){ bG[L.k]+=L.g; bGP[L.k]+=L.g*L.p; }
+  if(mech){ for(let iy=2;iy<ny;iy+=5) for(let ix=2;ix<nx;ix+=5){ const k=iy*nx+ix; if(fluid[k]){ res.diff.push(k); src[k]=1; } }
+    if(!res.links.length){ // no core on this plate: return at the cells deepest in the plan
+      const cx=Math.floor(R.cc.x-m.x0), cy=Math.floor(R.cc.y-m.y0); let best=-1, bd=1e9; for(let k=0;k<N;k++){ if(!fluid[k]) continue; const d=Math.hypot(k%nx-cx,((k/nx)|0)-cy); if(d<bd){ bd=d; best=k; } } if(best>=0){ res.links.push({k:best,d:0,g:1,p:0,kind:'ret'}); bG[best]+=1; } }
+    res.Q=supply/1000*area; res.ach=area*hh>0?res.Q*3600/(area*hh):0; }
+  else { if(!R.windowsOpen){ res.on=false; res.why='Windows closed: gusts over '+R.umax.toFixed(0)+' m/s at this height'; } else if(!anyOpenFace){ res.on=false; res.why='No operable face on this floor: open one, or switch to Mechanical'; } }
+  const win=res.links.filter(L=>L.kind==='win'); if(!mech&&res.on&&!res.shaft){ let lo=1e9, hi=-1e9; for(const L of win){ lo=Math.min(lo,L.p); hi=Math.max(hi,L.p); } if(!win.length||hi-lo<0.05) res.breath=true; }
+  if(res.on&&!res.breath&&res.links.length){
+    const p=new Float32Array(N); const w=1.85;
+    for(let it=0;it<1500;it++){ let dmax=0; for(let iy=0;iy<ny;iy++) for(let ix=0;ix<nx;ix++){ const k=iy*nx+ix; if(!fluid[k]) continue; let g=bG[k], r=bGP[k]+src[k];
+        if(ix+1<nx&&fluid[k+1]){ g++; r+=p[k+1]; } if(ix>0&&fluid[k-1]){ g++; r+=p[k-1]; } if(iy+1<ny&&fluid[k+nx]){ g++; r+=p[k+nx]; } if(iy>0&&fluid[k-nx]){ g++; r+=p[k-nx]; }
+        if(!g) continue; const nv=p[k]+w*(r/g-p[k]); const dd=Math.abs(nv-p[k]); if(dd>dmax) dmax=dd; p[k]=nv; }
+      if(dmax<(mech?1e-4:1e-6)) break; }
+    // flows across each cell's faces (+x and +y), the boundary links included
+    const lk=new Map(); for(const L of res.links) lk.set(L.k*4+L.d,L);
+    const fx=(k,side)=>{ const ix=k%nx; if(side>0){ if(ix+1<nx&&fluid[k+1]) return p[k]-p[k+1]; const L=lk.get(k*4); return L?L.g*(p[k]-L.p):0; } if(ix>0&&fluid[k-1]) return p[k-1]-p[k]; const L=lk.get(k*4+1); return L?L.g*(L.p-p[k]):0; };
+    const fy=(k,side)=>{ const iy=(k/nx)|0; if(side>0){ if(iy+1<ny&&fluid[k+nx]) return p[k]-p[k+nx]; const L=lk.get(k*4+2); return L?L.g*(p[k]-L.p):0; } if(iy>0&&fluid[k-nx]) return p[k-nx]-p[k]; const L=lk.get(k*4+3); return L?L.g*(L.p-p[k]):0; };
+    for(let k=0;k<N;k++){ if(!fluid[k]) continue; res.vx[k]=(fx(k,1)+fx(k,-1))/2; res.vy[k]=(fy(k,1)+fy(k,-1))/2; }
+    for(const L of res.links){ L.q=L.g*(L.p-p[L.k]); } // + into the floor
+    let scale=1;
+    if(mech) scale=res.diff.length?(res.Q/res.diff.length)/hh:0;
+    else { let phys=0, num=0; for(const L of res.links){ if(L.q<=0) continue; const dp=L.p-p[L.k]; phys+=0.6*R.Uz*Math.sqrt(Math.max(0,dp))*(L.kind==='win'?L.frac:0.05); num+=L.q; } scale=num>0?(R.Q>0?R.Q/(hh*num):phys/num):0; }
+    for(let k=0;k<N;k++){ if(!fluid[k]) continue; res.vx[k]*=scale; res.vy[k]*=scale; res.spd[k]=Math.hypot(res.vx[k],res.vy[k]); }
+  } else if(res.on&&res.breath){ // single-sided: in and out at the windows, fading with depth
+    const nr=R.near, lim=res.lim, U=0.05*R.Uz; for(let k=0;k<N;k++){ if(!fluid[k]) continue; const d=nr[k]; if(d<=0||d>lim) continue; const ix=k%nx, iy=(k/nx)|0; const nv=(jx,jy)=>{ if(jx<0||jy<0||jx>=nx||jy>=ny) return d; const v=nr[jy*nx+jx]; return v>0?v:d; };
+      let gx=(nv(ix+1,iy)-nv(ix-1,iy))/2, gy=(nv(ix,iy+1)-nv(ix,iy-1))/2; const gl=Math.hypot(gx,gy)||1; const u=U*(1-(d-1)/lim); res.vx[k]=gx/gl*u; res.vy[k]=gy/gl*u; res.spd[k]=u; }
+    for(const L of res.links) L.q=0; }
+  const sp=[]; let sum=0, still=0; for(let k=0;k<N;k++){ if(!fluid[k]) continue; const v=res.spd[k]; sp.push(v); sum+=v; if(v<0.05) still++; }
+  sp.sort((a,b)=>a-b); res.mean=sp.length?sum/sp.length:0; res.still=sp.length?still/sp.length:1; const q90=sp.length?sp[Math.floor(sp.length*0.92)]:0; res.uRef=Math.max(0.02,q90||0.02);
+  flowCache={key,res,f}; return res; }
+/* the field drawn in the floor's own axes: speed as colour, the openings as bars outside the façade, diffusers and returns; arrows where there is no animation */
+function flowCells(F,vp){ let s=''; const nx=F.nx; const X=k=>F.x0+k%nx, Y=k=>F.y0+((k/nx)|0);
+  for(let k=0;k<F.fluid.length;k++){ if(!F.fluid[k]) continue; s+='<rect x="'+X(k).toFixed(1)+'" y="'+Y(k).toFixed(1)+'" width="1.02" height="1.02" fill="'+rampFlow(F.spd[k]/F.uRef)+'"/>'; }
+  for(const L of F.links){ if(L.kind==='shaft'&&Math.abs(L.q||0)<1e-9) continue; const x=X(L.k), y=Y(L.k), [dx,dy]=FD4[L.d]; const col=L.kind==='ret'?FLOW_COL.ret:L.kind==='shaft'?FLOW_COL.out:((L.q||0)>0||F.breath?FLOW_COL.in:FLOW_COL.out); const t=0.42, o=L.kind==='win'?0.08:-0.5;
+    const rx=dx>0?x+1+o:dx<0?x-t-o:x, ry=dy>0?y+1+o:dy<0?y-t-o:y; s+='<rect x="'+rx.toFixed(2)+'" y="'+ry.toFixed(2)+'" width="'+(dx?t:1).toFixed(2)+'" height="'+(dy?t:1).toFixed(2)+'" fill="'+col+'"'+(F.breath&&L.kind==='win'?' fill-opacity="0.6"':'')+'/>'; }
+  for(const k of F.diff){ const x=X(k)+0.5, y=Y(k)+0.5; s+='<rect x="'+(x-0.4).toFixed(2)+'" y="'+(y-0.4).toFixed(2)+'" width="0.8" height="0.8" fill="#fff" stroke="'+FLOW_COL.sup+'" stroke-width="0.14"/><path d="M'+(x-0.4)+','+(y-0.4)+'L'+(x+0.4)+','+(y+0.4)+'M'+(x-0.4)+','+(y+0.4)+'L'+(x+0.4)+','+(y-0.4)+'" stroke="'+FLOW_COL.sup+'" stroke-width="0.1"/>'; }
+  if(!vp){ for(let k=0;k<F.fluid.length;k++){ const ix=k%nx, iy=(k/nx)|0; if(!F.fluid[k]||ix%3!==1||iy%3!==1) continue; const v=F.spd[k]; if(v<F.uRef*0.04) continue; const ux=F.vx[k]/v, uy=F.vy[k]/v, L=0.6+1.6*Math.min(1,v/F.uRef); const cx=X(k)+0.5, cy=Y(k)+0.5, ax=cx-ux*L/2, ay=cy-uy*L/2, bx=cx+ux*L/2, by=cy+uy*L/2, px=-uy*0.35, py=ux*0.35;
+      s+='<path d="M'+ax.toFixed(2)+','+ay.toFixed(2)+'L'+bx.toFixed(2)+','+by.toFixed(2)+'M'+(bx-ux*0.5+px).toFixed(2)+','+(by-uy*0.5+py).toFixed(2)+'L'+bx.toFixed(2)+','+by.toFixed(2)+'L'+(bx-ux*0.5-px).toFixed(2)+','+(by-uy*0.5-py).toFixed(2)+'" fill="none" stroke="#123C55" stroke-width="0.18" stroke-linecap="round" stroke-linejoin="round"/>'; } }
+  return s; }
+/* the flow layer's controls: system, which faces open (the façade zone at this level), and the wind */
+const WIND8=[[0,'N'],[45,'NE'],[90,'E'],[135,'SE'],[180,'S'],[225,'SW'],[270,'W'],[315,'NW']];
+function flowCtlHTML(f,R,F){ const lvl=f.i+1, mech=F.sys==='mech'; let h='<div class="fc-seg"><button type="button" data-fsys="nat" aria-pressed="'+!mech+'">Windows</button><button type="button" data-fsys="mech" aria-pressed="'+mech+'">Mechanical</button></div>';
+  if(!mech){ h+='<div class="fc-row"><span>Open</span>'+ORI.filter(o=>R.edgeLen[o]>0).map(o=>{ const z=zoneFor(o,lvl); return '<button type="button" class="fc-face" data-fface="'+o+'" aria-pressed="'+!!z.operable+'" title="'+NAMES[o]+' face: '+(z.operable?'operable':'fixed')+' · zone L'+z.from+'–L'+Math.min(z.to,(LAB.floors||[]).length)+(z.face==='all'?', all faces':'')+'. Click to '+(z.operable?'fix':'open')+' its windows.">'+o+'</button>'; }).join('')+'</div>';
+    const W=LAB.S.impact.wind; const cur=W.annual?'p':String(WIND8.reduce((b,[d])=>Math.abs(((W.dir-d+540)%360)-180)<Math.abs(((W.dir-b+540)%360)-180)?d:b,0));
+    h+='<div class="fc-row"><span>Wind</span><select data-fwind aria-label="Wind from"><option value="p"'+(cur==='p'?' selected':'')+'>Prevailing</option>'+WIND8.map(([d,n])=>'<option value="'+d+'"'+(cur===String(d)?' selected':'')+'>from '+n+'</option>').join('')+'</select><b>'+R.Uz.toFixed(1)+' m/s</b></div>'; }
+  if(mech) h+='<div class="fc-row"><span>Supply</span><select data-fsup aria-label="Supply air">'+[2,3,5,8].map(v=>'<option value="'+v+'"'+(F.supply===v?' selected':'')+'>'+v+' L/s per m²</option>').join('')+'</select></div>';
+  h+='<div class="fc-stat">'+(mech?F.ach.toFixed(1)+' ach · '+F.diff.length+' diffusers · '+Math.round(F.rate/F.supply*100)+'% outdoor air':(!F.on?'':(F.breath?'Single-sided · reaches '+F.lim+' m':(R.ach>0?R.ach.toFixed(1)+' ach · ':'')+Math.round(F.still*100)+'% still')))+'</div>';
+  return h; }
+function bindFlowCtl(el){ el.querySelectorAll('[data-fsys]').forEach(b=>b.onclick=()=>{ SW.flow=SW.flow||{}; SW.flow.sys=b.dataset.fsys; persist(); renderPlan(); });
+  el.querySelectorAll('[data-fface]').forEach(b=>b.onclick=()=>{ const o=b.dataset.fface, lvl=planLevel(); let z=zoneFor(o,lvl); if(z===DEFAULT_ZONE){ z=Object.assign(clone(DEFAULT_ZONE),{face:o,from:1,to:(LAB.floors||[]).length||999}); SW.zones.push(z); } z.operable=!z.operable; syncZoneUI(); live(); });
+  const su=el.querySelector('[data-fsup]'); if(su) su.onchange=()=>{ SW.flow=SW.flow||{}; SW.flow.supply=+su.value; persist(); renderPlan(); };
+  const ws=el.querySelector('[data-fwind]'); if(ws) ws.onchange=()=>{ const W=LAB.S.impact.wind; if(ws.value==='p') W.annual=true; else { W.annual=false; W.dir=+ws.value; } if(windResult) stale.wind=true; showStale(); syncUI(); persist(); renderPlan(); }; }
+/* particles carried by the field over the viewport plan */
+const FLOWANIM={cv:null,raf:0,parts:[],F:null,last:0};
+const flowOn=()=>!!(adv()&&planActive()&&PLAN_OVL&&!PLAN_OVL.off&&PLAN_OVL.layer==='flow'&&PLAN_OVL.flow&&PLAN_OVL.flow.on&&PLAN_OVL.f===planFloor()&&PLAN_OVL.mat);
+function flowAnimSync(svg){ const A=FLOWANIM; if(!svg||!flowOn()){ if(A.cv) A.cv.hidden=true; if(A.raf){ cancelAnimationFrame(A.raf); A.raf=0; } return; }
+  if(!A.cv){ A.cv=document.createElement('canvas'); A.cv.className='flow-cv'; A.cv.setAttribute('aria-hidden','true'); }
+  if(A.cv.previousSibling!==svg) svg.parentNode.insertBefore(A.cv,svg.nextSibling);
+  const dpr=Math.min(2,window.devicePixelRatio||1), W=parseFloat(svg.style.width)||0, H=parseFloat(svg.style.height)||0; A.cv.hidden=false; Object.assign(A.cv.style,{left:svg.style.left,top:svg.style.top,width:W+'px',height:H+'px'}); if(A.cv.width!==Math.round(W*dpr)||A.cv.height!==Math.round(H*dpr)){ A.cv.width=Math.round(W*dpr); A.cv.height=Math.round(H*dpr); } A.dpr=dpr;
+  if(A.F!==PLAN_OVL.flow){ A.F=PLAN_OVL.flow; A.parts=[]; }
+  if(!A.raf){ A.last=0; A.raf=requestAnimationFrame(flowTick); } }
+function flowSpawn(F){ const nx=F.nx; let k=-1, ph=1;
+  if(F.sys==='mech'){ k=F.diff[Math.floor(Math.random()*F.diff.length)]; }
+  else if(F.breath){ const L=F.links[Math.floor(Math.random()*F.links.length)]; k=L?L.k:-1; }
+  else { const ins=F.links.filter(L=>(L.q||0)>0); if(!F._inW){ F._inW=ins; F._inT=ins.reduce((s,L)=>s+L.q,0); } let r=Math.random()*F._inT; for(const L of F._inW){ r-=L.q; if(r<=0){ k=L.k; break; } } if(k<0&&F._inW.length) k=F._inW[0].k; }
+  if(k==null||k<0) return null; return {x:F.x0+k%nx+Math.random(),y:F.y0+((k/nx)|0)+Math.random(),age:0,ph,tr:[]}; }
+function flowTick(t){ const A=FLOWANIM; A.raf=0; if(!flowOn()||!A.cv||A.cv.hidden){ if(A.cv) A.cv.hidden=true; return; }
+  const F=A.F, M=PLAN_OVL.mat, ctx=A.cv.getContext('2d'), dpr=A.dpr||1; const dt=A.last?Math.min(0.05,(t-A.last)/1000):0.016; A.last=t;
+  const slow=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches?0.3:1; const want=Math.min(700,Math.max(80,Math.round(F.area/2.5)));
+  while(A.parts.length<want){ const q=flowSpawn(F); if(!q) break; q.age=Math.random()*2; A.parts.push(q); }
+  const nx=F.nx, ny=F.ny; const cellOf=(x,y)=>{ const ix=Math.floor(x-F.x0), iy=Math.floor(y-F.y0); return ix<0||iy<0||ix>=nx||iy>=ny?-1:iy*nx+ix; };
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,A.cv.width,A.cv.height); ctx.lineCap='round'; ctx.lineWidth=Math.max(1,Math.min(2.2,Math.hypot(M[0],M[1])*0.16)); const col=F.sys==='mech'?'#1E3F8A':'#0B4A66';
+  for(let i=0;i<A.parts.length;i++){ let q=A.parts[i]; const k=cellOf(q.x,q.y); let dead=k<0||!F.fluid[k]||q.age>(F.breath?8:30);
+    if(!dead){ const v=F.spd[k]; if(v<F.uRef*0.01){ q.age+=dt*6; } else { const r=Math.min(1.6,Math.max(0.3,v/F.uRef)); const vis=4.5*r*slow; let ux=F.vx[k]/v, uy=F.vy[k]/v;
+        if(F.breath){ if(q.ph>0&&(F.near[k]>=F.lim||q.age>4)) q.ph=-1; ux*=q.ph; uy*=q.ph; if(q.ph<0&&F.near[k]<=1&&q.age>1) dead=true; }
+        q.tr.push(q.x,q.y); if(q.tr.length>16) q.tr.splice(0,2); q.x+=ux*vis*dt; q.y+=uy*vis*dt; } q.age+=dt; }
+    if(dead){ const n=flowSpawn(F); if(!n){ A.parts.splice(i--,1); continue; } A.parts[i]=q=n; continue; }
+    const tr=q.tr; if(tr.length<2) continue; const P=(x,y)=>[M[0]*x+M[2]*y+M[4],M[1]*x+M[3]*y+M[5]];
+    const n=tr.length/2; let a=P(tr[0],tr[1]); for(let j=1;j<=n;j++){ const b=j<n?P(tr[2*j],tr[2*j+1]):P(q.x,q.y); ctx.globalAlpha=0.08+0.8*(j/n); ctx.strokeStyle=col; ctx.beginPath(); ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); ctx.stroke(); a=b; } }
+  ctx.globalAlpha=1; A.raf=requestAnimationFrame(flowTick); }
+const PLAN_SETS={sun:[['da','Daylight autonomy'],['df','Daylight factor'],['ase','Annual sun exposure']],air:[['flow','Air flow'],['reach','Reach of openings']]};
 const planKind=()=>focusOf()==='wind'?'air':'sun'; let planFor=null;
 function renderPlan(){
   const host=$('plan'); if(!adv()||!LAB.floors){ $('plan-block').hidden=true; if(PLAN_OVL){ PLAN_OVL=null; LAB.requestRender(); } return; } $('plan-block').hidden=false; if(!document.getElementById('plan-slot')) setOut('sun',sections.sun);
   const nF=LAB.floors.length, L=planLevel(); const inp=$('plan-level'); inp.max=nF; inp.value=L; const f=LAB.floors[L-1]; if(PLAN.lv.kind==='above'&&PLAN.lv.i!==L-1){ PLAN.lv={kind:'above',i:L-1}; if(planActive()) planFrame(false); } const R=planStudy(f); const pk=planKind(), set=PLAN_SETS[pk]; planFor=pk; SW.planLayers=SW.planLayers||{}; const layer=set.some(([k])=>k===SW.planLayers[pk])?SW.planLayers[pk]:set[0][0];
   $('plan-title').textContent=pk==='air'?'Floor plan · air inside':'Floor plan · sun and daylight inside'; $('plan-info').textContent=pk==='air'?"Air follows the ventilation tab's wind case and opening settings. Edges are coloured by face, solid where the zone is operable.":"Daylight follows the daylight tab's target and period. Edges are coloured by face, solid where the zone is operable.";
-  const chips=$('plan-layers'); chips.innerHTML=set.map(([k,n])=>`<button type="button" class="chip" data-layer="${k}" aria-pressed="${k===layer}">${n}</button>`).join(''); chips.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{ SW.planLayers[pk]=b.dataset.layer; persist(); renderPlan(); }));
+  const chips=$('plan-layers'); chips.innerHTML=set.map(([k,n])=>`<button type="button" class="chip" data-layer="${k}" aria-pressed="${k===layer}">${n}</button>`).join(''); chips.querySelectorAll('button').forEach(b=>b.addEventListener('click',()=>{ SW.planLayers[pk]=b.dataset.layer; persist(); renderPlan(); })); if(layer==='flow'){ const d=document.createElement('div'); d.className='flow-ctl'; d.innerHTML=flowCtlHTML(f,R,flowField(f,R)); chips.appendChild(d); bindFlowCtl(d); }
   const sd=LAB.S.impact.sun, Dt=DATES[sd.date]; const st=(k,v)=>`<div class="stat"><b>${v}</b><small>${k}</small></div>`; const pct=v=>R.area?Math.round(v/R.area*100)+'%':'–'; let extra=null, legend='', stats='', note='';
   const faces=ORI.map(o=>`<span><i style="background:${FACE_COL[o]}"></i>${NAMES[o]} face</span>`).join('')+'<span>Solid edge: operable · dashed: fixed</span>';
   if(layer==='sun'){ legend=`<span><i style="background:var(--sun)"></i>Sun on the floor with devices</span><span><i style="background:none;border:1.5px solid var(--sun)"></i>Without devices</span>`+faces;
@@ -1799,24 +1903,28 @@ function renderPlan(){
     note=`Annual sunlight exposure as IES LM-83 defines it: every occupied hour (8:00–18:00 clock time) of the CWEC typical year with measured direct sun, its normal irradiance turned into lux by the Perez beam efficacy, sun on the work plane = beam × sin altitude × glass VT × device transmission. Each cell walks one ray per 2° of sun azimuth to the glass it would see, then tests every hour in that bin against the window band and the device's cut-off. Cells over ${Math.round(extra.thr)} h are flagged${extra.period.full?'':' (250 h scaled to the period)'}; LEED v4.1 asks that no more than 10% of the floor is flagged, or that glare control is shown. Blinds are not modelled here, so this is the façade's own performance.`; }
   else if(layer==='reach'){ const lim=R.mode==='cross'?R.limCross:R.mode==='single'?R.limSingle:R.limStack; legend=`<span><i style="background:${rampReach(1)}"></i>Within 8 m of an opening</span><span><i style="background:${rampReach(9)}"></i>Within the ${R.mode==='cross'?'cross':R.mode==='single'?'single-sided':'stack'} depth rule, ${lim} m</span><span><i style="background:${rampReach(99)}"></i>Beyond it</span>`+faces;
     stats=st('Within 8 m of an opening',pct(R.aWithin8)+' <em>ASHRAE 62.1 zone</em>')+st('Within the depth rule',pct(R.aRule)+' <em>'+(R.mode==='cross'?'5 H = '+R.limCross+' m from the inlet':R.mode==='single'?'2.5 H = '+R.limSingle+' m':'12 m to an operable face')+'</em>')+st('Out of reach',pct(R.area-R.aRule)+' <em>deeper than the rule, or no operable face</em>')+st('Free opening area',R.freePct.toFixed(1)+'% of floor <em>'+(R.freePct>=4?'meets':'below')+' the 4% rule</em>');
-    note=`Walking distance through the plate from each cell to the nearest operable window, around the core (a 1 m grid). ASHRAE 62.1 counts a space as naturally ventilated within 8 m of an opening; CIBSE AM10 sets how deep air reaches: 2.5 floor heights for single-sided rooms, 5 for cross ventilation, about 12 m to a stack. This layer does not depend on the hour: it is the reach the façade allows, while Air paths now shows the current wind case. Interior partitions are not modeled.`; }
-  else { legend=`<span><i style="background:var(--wind);opacity:.6"></i>Ventilated by the wind</span>`+faces;
-    stats=st('Ventilated floor',R.windowsOpen?fmtI(R.aVent)+' m² <em>'+pct(R.aVent)+'</em>':'windows closed')+st('Air changes',R.windowsOpen&&R.ach>0?R.ach.toFixed(1)+' /h <em>wind '+R.Qw.toFixed(1)+(R.Qs?' + stack '+R.Qs.toFixed(1):'')+' m³/s</em>':'–')+st('Within 8 m of an opening',pct(R.aWithin8)+' <em>ASHRAE 62.1 zone</em>')+st('Free opening area',R.freePct.toFixed(1)+'% of floor <em>'+(R.freePct>=4?'meets':'below')+' the 4% rule</em>')+st('Wind at this level',R.Uz.toFixed(1)+' m/s <em>from '+R.wdir+'°'+(R.windowsOpen?'':' · gusts over '+R.umax.toFixed(0)+' m/s')+'</em>')+st('Depth rule',R.mode==='cross'?'5 H = '+R.limCross+' m <em>cross</em>':R.mode==='single'?'2.5 H = '+R.limSingle+' m <em>single-sided</em>':'12 m <em>stack</em>');
-    note=`${R.mode==='cross'?'Cross ventilation (CIBSE AM10): a cell is ventilated when air can enter through an operable windward face (Cp +0.7) and leave through an operable side or leeward face (Cp −0.5 / −0.3) within five floor heights of the inlet, without meeting the core. Flow Q = 0.6 · A · U · √ΔCp.':R.mode==='single'?'Single-sided ventilation (AM10): cells within 2.5 floor heights of an operable face. Flow combines wind (0.025 · A · U) and stack (BS 5925, ΔT '+(SW.vent.dT||3)+' K over the opening height).':'Stack ventilation through atria or sky gardens: cells within 12 m of an operable face; flow combines wind and a three-storey stack.'} Free opening area is ${Math.round(R.open*100)}% of the glass on operable zones; ASHRAE 62.1 asks for openings of at least 4% of the floor served, within 8 m of every point. The wind is the ${LAB.S.impact.wind.annual?'dominant sector of the period':'current case'} scaled to this height. Interior partitions are not modeled.`; }
+    note=`Walking distance through the plate from each cell to the nearest operable window, around the core (a 1 m grid). ASHRAE 62.1 counts a space as naturally ventilated within 8 m of an opening; CIBSE AM10 sets how deep air reaches: 2.5 floor heights for single-sided rooms, 5 for cross ventilation, about 12 m to a stack. This layer does not depend on the hour: it is the reach the façade allows, while Air flow shows where the air goes in the current wind case. Interior partitions are not modeled.`; }
+  else { extra=flowField(f,R); const F=extra; const sp=v=>v<0.1?v.toFixed(2):v.toFixed(1);
+    legend=`<span><i style="background:linear-gradient(90deg,${[0,0.5,1].map(rampFlow).join(',')})"></i>Air speed 0 to ${sp(F.uRef)} m/s</span>`+(F.sys==='mech'?`<span><i style="background:${FLOW_COL.sup}"></i>Supply diffuser</span><span><i style="background:${FLOW_COL.ret}"></i>Return at the core</span>`:`<span><i style="background:${FLOW_COL.in}"></i>Air in</span><span><i style="background:${FLOW_COL.out}"></i>Air out</span>`)+faces;
+    stats=F.sys==='mech'?st('Supply air',fmtI(F.Q*1000)+' L/s <em>'+F.supply+' L/s per m² · '+F.ach.toFixed(1)+' air changes /h</em>')+st('Outdoor air',Math.round(F.rate/F.supply*100)+'% <em>'+F.rate.toFixed(2)+' L/s per m² from the Energy tab; the rest is return air</em>')+st('Diffusers',F.diff.length+' <em>about one per '+Math.round(F.area/Math.max(1,F.diff.length))+' m²</em>')+st('Drift to the returns',sp(F.mean)+' m/s <em>mean, across the floor; the diffusers mix the room faster</em>')
+      :(!F.on?st('Windows',F.why||'closed'):st('Air changes',R.ach>0?R.ach.toFixed(1)+' /h <em>'+(F.breath?'single-sided exchange':'wind'+(F.shaft?' and stack':'')+' through the plate')+'</em>':'–')+st(F.breath?'Reach of the exchange':'Mean speed',F.breath?F.lim+' m <em>2.5 floor heights</em>':sp(F.mean)+' m/s <em>across the floor</em>')+st('Still air',Math.round(F.still*100)+'% <em>of the floor under 0.05 m/s</em>')+st('Wind at this level',R.Uz.toFixed(1)+' m/s <em>from '+R.wdir+'°</em>'));
+    note=F.sys==='mech'?`Mechanical ventilation: ${F.supply} L/s per m² of supply air, ${Math.round(F.rate/F.supply*100)}% of it outdoor air at the Energy tab's ${F.rate.toFixed(2)} L/s per m², is supplied through ceiling diffusers on a 5 m grid and returned at the core walls to the shaft. The floor is solved as a pressure network on the 1 m plan grid, so the air spreads from each diffuser and gathers toward the returns; pale areas are far from both and mix least. Interior partitions are not modeled.`:`Natural ventilation through the operable windows: each window links the floor to the outside at its face's wind pressure coefficient${F.shaft?', and the stack strategy draws air up the core shaft':''}. The open plan is solved as a pressure network on the 1 m grid (as CONTAM does room by room), and speeds are scaled to the orifice flow at the inlets, 0.6 · A · U · √ΔCp. ${F.breath?'Every open window faces the same pressure, so air does not cross the plate: it swaps in and out at the windows, reaching about 2.5 floor heights.':'Air enters on the windward faces and leaves on the faces in suction; pale areas are bypassed.'} Open or fix a face and turn the wind in the plan panel to see the air change. Interior partitions are not modeled.`; }
   host.innerHTML=planSVG(R,layer,extra); $('plan-legend').innerHTML=legend; $('plan-stats').innerHTML=stats; $('plan-note').textContent=note; if(LAB.help) LAB.help.apply($('plan-block'));
-  const why=layer==='air'?(!R.windowsOpen?'Windows closed: gusts over '+R.umax.toFixed(0)+' m/s here':(!R.vent.length?'No air path on this floor':'')):'';
-  PLAN_OVL={f,layer,set,why,off:!!SW.planOvlOff,html:SW.planOvlOff?'':planCells(R,layer,extra),node:null,sig:pk+'|'+layer+'|'+!!SW.planOvlOff+'|'+why}; ppResults(); LAB.requestRender();
+  const why=layer==='flow'&&extra?(extra.why||''):''; const fsig=layer==='flow'&&extra?flowCtlHTML(f,R,extra):'';
+  PLAN_OVL={f,layer,set,why,off:!!SW.planOvlOff,html:SW.planOvlOff?'':planCells(R,layer,extra,true),flow:layer==='flow'?extra:null,node:null,sig:pk+'|'+layer+'|'+!!SW.planOvlOff+'|'+why+'|'+fsig,ctl:fsig}; ppResults(); LAB.requestRender();
 }
 /* the viewport plan's result layer: chips to pick it (or turn it off) and a legend, in the floating plan panel */
 let PLAN_OVL=null;
 const OVL_KEY={da:[rampDA,[0,0.25,0.5,0.75,1],['0%','50%','100%']],df:[rampDF,[0,0.01,0.02,0.035,0.05],['0','2%','5%+']],ase:[rampASE,[0,125,250,375,500],['0 h','250 h','500 h+']]};
 function ppResults(){ const host=document.getElementById('pp-res'); if(!host||!PLAN_OVL) return; if(host.dataset.sig===PLAN_OVL.sig) return; host.dataset.sig=PLAN_OVL.sig;
   const {set,layer,off}=PLAN_OVL; let h='<div class="pp-chips">'+set.map(([k,n])=>`<button type="button" data-ovl="${k}" aria-pressed="${!off&&k===layer}">${n}</button>`).join('')+`<button type="button" data-ovl="off" aria-pressed="${off}">Off</button></div>`;
-  if(!off){ const K=OVL_KEY[layer]; if(K) h+=`<div class="pp-ramp" style="background:linear-gradient(90deg,${K[1].map(v=>K[0](v)).join(',')})"></div><div class="pp-ramp-l">${K[2].map(t=>'<span>'+t+'</span>').join('')}</div>`;
+  if(PLAN_OVL.ctl) h+='<div class="flow-ctl">'+PLAN_OVL.ctl+'</div>';
+  if(!off&&layer==='flow'&&PLAN_OVL.flow){ const F=PLAN_OVL.flow; h+=`<div class="pp-ramp" style="background:linear-gradient(90deg,${[0,0.25,0.5,0.75,1].map(rampFlow).join(',')})"></div><div class="pp-ramp-l"><span>0</span><span>${(F.uRef/2).toFixed(2)}</span><span>${F.uRef.toFixed(2)} m/s</span></div><div class="pp-legend">${F.sys==='mech'?`<span><i style="background:${FLOW_COL.sup}"></i>Supply</span><span><i style="background:${FLOW_COL.ret}"></i>Return</span>`:`<span><i style="background:${FLOW_COL.in}"></i>In</span><span><i style="background:${FLOW_COL.out}"></i>Out</span>`}</div>`; }
+  else if(!off){ const K=OVL_KEY[layer]; if(K) h+=`<div class="pp-ramp" style="background:linear-gradient(90deg,${K[1].map(v=>K[0](v)).join(',')})"></div><div class="pp-ramp-l">${K[2].map(t=>'<span>'+t+'</span>').join('')}</div>`;
     else if(layer==='reach') h+=`<div class="pp-legend"><span><i style="background:${rampReach(1)}"></i>≤ 8 m</span><span><i style="background:${rampReach(9)}"></i>Depth rule</span><span><i style="background:${rampReach(99)}"></i>Beyond</span></div>`;
-    else h+=`<div class="pp-legend"><span><i style="background:var(--${layer==='air'?'wind':'sun'});opacity:.7"></i>${layer==='air'?'Ventilated':'Sunlit'}</span></div>`; }
+  }
   if(!off&&PLAN_OVL.why) h+='<div class="pp-why">'+PLAN_OVL.why+'</div>';
-  host.innerHTML=h; host.querySelectorAll('[data-ovl]').forEach(b=>b.onclick=()=>{ const k=b.dataset.ovl; if(k==='off') SW.planOvlOff=true; else { SW.planOvlOff=false; SW.planLayers=SW.planLayers||{}; SW.planLayers[planFor]=k; } persist(); renderPlan(); }); }
+  host.innerHTML=h; { const fc=host.querySelector('.flow-ctl'); if(fc) bindFlowCtl(fc); } host.querySelectorAll('[data-ovl]').forEach(b=>b.onclick=()=>{ const k=b.dataset.ovl; if(k==='off') SW.planOvlOff=true; else { SW.planOvlOff=false; SW.planLayers=SW.planLayers||{}; SW.planLayers[planFor]=k; } persist(); renderPlan(); }); }
 
 /* ---------- tower-wide ventilation checks (ASHRAE 62.1 natural ventilation): free opening area and floor within 8 m of an operable opening, per floor ---------- */
 function ventFloorQuick(f){
@@ -1858,8 +1966,8 @@ function leedCard(r,w){
 }
 /* ---------- report builder ---------- */
 const REP_SECTIONS=[['summary','Summary and settings',true],['shadow','Shadow on the ground and plazas',true],['facade','Sun on the façades and solar heat',true],['efficiency','Massing efficiency · form metrics',true],['daylight','Daylight · sDA and ASE (Design development)',true],['wind','Pedestrian wind comfort',true],['rain','Rain · driving rain, shelter and harvesting',true],['vent','Natural ventilation and terraces (Design development)',true],['energy','Energy model · TEUI, TEDI, GHGI (Design development)',true],['plans','Floor plans (Design development)',true],['method','Method and assumptions',true]];
-const REP_LAYERS=[['da','Daylight autonomy'],['df','Daylight factor'],['ase','Annual sun exposure'],['air','Air paths'],['reach','Reach of openings']];
-function repDefaults(){ const o={title:'',author:'',levels:'',sections:{},layers:{da:true,df:false,ase:true,air:true,reach:true}}; for(const [k,,d] of REP_SECTIONS) o.sections[k]=d; return o; }
+const REP_LAYERS=[['da','Daylight autonomy'],['df','Daylight factor'],['ase','Annual sun exposure'],['flow','Air flow'],['reach','Reach of openings']];
+function repDefaults(){ const o={title:'',author:'',levels:'',sections:{},layers:{da:true,df:false,ase:true,flow:true,reach:true}}; for(const [k,,d] of REP_SECTIONS) o.sections[k]=d; return o; }
 function buildReportUI(){
   SW.report=Object.assign(repDefaults(),SW.report||{}); SW.report.sections=Object.assign(repDefaults().sections,SW.report.sections||{}); SW.report.layers=Object.assign(repDefaults().layers,SW.report.layers||{});
   $('rep-sections').innerHTML=REP_SECTIONS.map(([k,n])=>`<label class="check${/Design development/.test(n)?' adv':''}" for="rep-s-${k}"><input type="checkbox" id="rep-s-${k}" data-k="${k}"><span>${n.replace(' (Design development)','')}</span></label>`).join('');
@@ -1883,7 +1991,7 @@ async function generateReport(){
     customExtra={grids:[],charts:[]};
     if(adv()&&S.sections.plans&&LAB.floors){ for(const [pk,title] of [['sun','Floor plans · sun and daylight inside'],['air','Floor plans · air inside']]){ const layers=REP_LAYERS.filter(([k])=>S.layers[k]&&PLAN_SETS[pk].some(([q])=>q===k)); if(!layers.length) continue; const rows=[];
       for(const L of reportLevels()){ status(`Drawing level ${L}…`); await new Promise(r=>setTimeout(r,10)); const f=LAB.floors[L-1]; const R=planStudy(f); const cells=[];
-        for(const [k,n] of layers){ let extra=null; if(k==='df'||k==='da') extra=daylightFloor(f,1,2); else if(k==='ase') extra=aseFloor(f,true); const svg=planSVG(R,k,extra); try{ const url=await svgToJpeg(svg,760,600); cells.push({url,w:760,h:600,caption:n+(k==='sun'?' · '+DATES[LAB.S.impact.sun.date].label+' '+fmtHour(LAB.S.impact.sun.hour):'')}); }catch(e){ console.warn(e); } }
+        for(const [k,n] of layers){ let extra=null; if(k==='df'||k==='da') extra=daylightFloor(f,1,2); else if(k==='ase') extra=aseFloor(f,true); else if(k==='flow') extra=flowField(f,R); const svg=planSVG(R,k,extra); try{ const url=await svgToJpeg(svg,760,600); cells.push({url,w:760,h:600,caption:n+(k==='sun'?' · '+DATES[LAB.S.impact.sun.date].label+' '+fmtHour(LAB.S.impact.sun.hour):'')}); }catch(e){ console.warn(e); } }
         rows.push({label:'Level '+L+' · '+fmtI(R.area)+' m²',cells}); }
       if(rows.length) customExtra.grids.push({title,cols:2,caption:'Each plan is drawn north up with the core; edges are coloured by face and solid where the zone is operable.',rows}); } }
     status('Building the PDF…'); await LAB.report.make('custom'); status('');
