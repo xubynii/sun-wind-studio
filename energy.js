@@ -107,7 +107,7 @@ function modelHourly(floors){
     if(fl.garden||OPS[fl.prog].open) z.open=true; });
   for(const o of ORI){ glz[o].wwrAvg=glz[o].A?glz[o].wwr/glz[o].A:0; glz[o].shgcEff=glz[o].wwr?glz[o].shgcT/glz[o].wwr:0; }
   const monthly={heat:new Array(12).fill(0),cool:new Array(12).fill(0),light:new Array(12).fill(0),equip:new Array(12).fill(0),dhw:new Array(12).fill(0),aux:new Array(12).fill(0)};
-  const hH=new Float32Array(n), hC=new Float32Array(n); const rows=[]; let gasK=0, elecK=0, tediK=0, totalK=0, saveK=0; const envelope={gl:0,op:0,roof:0}; const shade=E.shade||0.85;
+  const hH=new Float32Array(n), hC=new Float32Array(n); const rows=[]; let gasK=0, elecK=0, tediK=0, totalK=0, saveK=0; const envelope={gl:0,op:0,roof:0}; const shade=E.shade||0.85; const LS={glass:{N:0,E:0,S:0,W:0},wall:{N:0,E:0,S:0,W:0},roof:0,vent:0,infil:0,recov:0,solar:0,internal:0};
   for(const p in zones){ const z=zones[p], ops=OPS[p], sch=schedOf(p), cond=!z.open; const Af=z.area;
     if(z.dsfA) for(let m=0;m<12;m++) z.dsf[m]/=z.dsfA;
     const Hw=ORI.reduce((s,o)=>s+z.Agl[o]*E.glazU,0), Hop=ORI.reduce((s,o)=>s+z.Aop[o]*E.wallU,0)+(z.roof+z.soffit)*E.roofU;
@@ -131,6 +131,7 @@ function modelHourly(floors){
       let res=solve(0), phi=0;
       if(cond){ const sH=occ?E.setH:E.setH-4, sC=occ?E.setC:E.setC+4;
         if(res.Ta<sH||res.Ta>sC){ const tgt=res.Ta<sH?sH:sC; const r10=solve(10*Af); phi=10*Af*(tgt-res.Ta)/(r10.Ta-res.Ta); res=solve(phi); } }
+      { const dT=res.Ta-Te; if(dT>0){ for(const o of ORI){ LS.glass[o]+=z.Agl[o]*E.glazU*dT/1000; LS.wall[o]+=z.Aop[o]*E.wallU*dT/1000; } LS.roof+=(z.roof+z.soffit)*E.roofU*dT/1000; const oa=occ?E.vent/1000*Af:0; LS.vent+=1200*oa*(1-E.hr)*dT/1000; LS.recov+=1200*oa*E.hr*dT/1000; LS.infil+=1200*E.infil*z.vol/3600*dT/1000; } LS.solar+=sol/1000; LS.internal+=phiInt/1000; }
       Tm=res.TmN; if(!cond){ if(res.Ta>r.tMax) r.tMax=res.Ta; if(occ&&res.Ta>26) r.over26++; }
       const qh=phi>0?phi/1000:0, qc=phi<0?-phi/1000:0; hH[k]+=qh; hC[k]+=qc; if(phi>r.peakH) r.peakH=phi; if(-phi>r.peakC) r.peakC=-phi;
       const heat=qh/copH(Te), cool=qc/copC(Te); const light=lightW/1000, equip=equipW/1000; const aux=(occ?SFP*E.vent*Af/1000:0)+0.02*(qh+qc)+4*Af/8760;
@@ -146,7 +147,7 @@ function modelHourly(floors){
   const uses={}; for(const [k] of USES) uses[k]=monthly[k].reduce((s,v)=>s+v,0);
   let pkH=0, pkC=0; for(let k=0;k<n;k++){ if(hH[k]>pkH) pkH=hH[k]; if(hC[k]>pkC) pkC=hC[k]; }
   last={rows,monthly,uses,gfa,total:totalK,teui:totalK/gfa,tedi:tediK/gfa,ghgi:(gasK*0.18+elecK*0.011)/gfa,gas:gasK,elec:elecK,tgt,envelope,glz,people:peopleFor(floors),
-    method:'hourly',hourly:{heat:hH,cool:hC},peakH:pkH*1000/gfa,peakC:pkC*1000/gfa,lightSave:saveK,lightShare:saveK/Math.max(1,uses.light+saveK),daylit:!!DL};
+    method:'hourly',hourly:{heat:hH,cool:hC},loss:LS,peakH:pkH*1000/gfa,peakC:pkC*1000/gfa,lightSave:saveK,lightShare:saveK/Math.max(1,uses.light+saveK),daylit:!!DL};
   return last;
 }
 function model(floors){ return LAB.phys&&LAB.phys.prep()?modelHourly(floors):modelMonthly(floors); }
@@ -185,10 +186,56 @@ const PLANT={hp:'air-source heat pump',gas:'gas boiler',res:'electric resistance
 const kp=(label,v,sub,cls)=>`<div><small>${label}</small><b class="${cls||''}">${v}</b>${sub?`<em>${sub}</em>`:''}</div>`;
 function targetBars(r){ const V=LAB.viz; const rows=[['TEUI',r.teui,r.tgt.teui,'kWh/m²/yr'],['TEDI',r.tedi,r.tgt.tedi,'kWh/m²/yr heating'],['GHGI',r.ghgi,r.tgt.ghgi,'kgCO₂e/m²/yr']].map(([k,v,t,u])=>({label:k,v:v/t,mark:1,color:v<=t*1.001?'var(--ok)':'var(--bad)',text:v.toFixed(v<10?1:0)+' of '+t.toFixed(t<10?1:0)+' '+u})); return V.hbars(rows,{key:'energy-targets',title:'Against the Vancouver targets · bar is the result, the tick the target',max:Math.max(1.4,...rows.map(x=>x.v*1.05)),labelW:46}); }
 function useDonut(r){ const V=LAB.viz; return V.donut(USES.map(([k,n,tok])=>({name:n,v:r.uses[k],color:`var(${tok})`,text:fmtI(r.uses[k]/1000)+' MWh · '+(r.uses[k]/r.total*100).toFixed(0)+'%'})),{key:'end-uses',title:'End uses',centre:fmtI(r.total/1000)+' MWh'}); }
+/* ---------- where the heat goes: each path's loss over the year, summed for every hour the inside is warmer than the outside ---------- */
+const LOSS_COL={glass:'#5B8FC9',wall:'#A0857A',roof:'#7C6A8E',vent:'#3FA7A0',infil:'#B7C3CE'};
+function lossRows(r){ const L=r.loss, g=r.gfa||1, N={N:'North',E:'East',S:'South',W:'West'}; const rows=[];
+  for(const o of ORI) rows.push({label:'Windows · '+N[o],v:L.glass[o]/g,color:LOSS_COL.glass});
+  for(const o of ORI) rows.push({label:'Walls · '+N[o],v:L.wall[o]/g,color:LOSS_COL.wall});
+  rows.push({label:'Roofs and soffits',v:L.roof/g,color:LOSS_COL.roof},{label:'Ventilation',v:L.vent/g,color:LOSS_COL.vent},{label:'Infiltration',v:L.infil/g,color:LOSS_COL.infil});
+  const tot=rows.reduce((a,b)=>a+b.v,0)||1; rows.forEach(x=>x.share=x.v/tot); return {rows:rows.filter(x=>x.v>0.05).sort((a,b)=>b.v-a.v),tot}; }
+function lossHTML(r){ if(!r.loss) return ''; const V=LAB.viz; const {rows,tot}=lossRows(r); const L=r.loss, g=r.gfa||1;
+  const gA=ORI.reduce((a,o)=>a+r.glz[o].wwr,0), wA=ORI.reduce((a,o)=>a+r.glz[o].A-r.glz[o].wwr,0), rA=r.envelope.roof;
+  const gL=ORI.reduce((a,o)=>a+L.glass[o],0), wL=ORI.reduce((a,o)=>a+L.wall[o],0);
+  const per=[{label:'Window',v:gA?gL/gA:0,color:LOSS_COL.glass},{label:'Wall',v:wA?wL/wA:0,color:LOSS_COL.wall},{label:'Roof, soffit',v:rA?L.roof/rA:0,color:LOSS_COL.roof}].filter(x=>x.v>0);
+  const top=rows[0], ratio=per[1]&&per[1].v?per[0].v/per[1].v:0; const gains=(L.solar+L.internal)/g; const kept=L.recov/g;
+  return '<h3>Where the heat goes</h3><div class="kpi">'+kp('Heat lost',(tot).toFixed(0)+' kWh/m²','per m² of floor a year, while it is warmer inside than out')+kp('Largest path',top?top.label:'–',top?Math.round(top.share*100)+'% of the loss':'')+kp('Window vs wall',ratio?ratio.toFixed(1)+'×':'–','heat lost per m² of window, against a m² of wall')+kp('Kept by heat recovery',kept.toFixed(0)+' kWh/m²',Math.round(E_hr()*100)+'% of the outdoor air\'s heat')+'</div>'
+    +V.fig(V.hbars(rows.map(x=>({label:x.label,v:x.v,color:x.color,text:x.v.toFixed(1)+' · '+Math.round(x.share*100)+'%'})),{key:'heat-loss',title:'Heat lost by path, kWh per m² of floor a year',dec:1,labelW:112}),'Transmission through each face\'s glass and wall, roofs and soffits, outdoor air after heat recovery, and leakage; summed over every hour of the typical year that the inside is warmer than the outside.')
+      +V.fig(V.hbars(per.map(x=>({label:x.label,v:x.v,color:x.color,text:x.v.toFixed(0)+' kWh/m²'})),{key:'heat-loss-element',title:'Loss per m² of each element, kWh a year',dec:0,labelW:80}),'The same loss divided by each element\'s area: what one more square metre of it costs. '+(gains>=tot?'Gains from sun, people, lights and equipment add up to more than the loss over the year, but much of them comes when heat is not needed.':'Gains from sun, people, lights and equipment offset '+Math.round(gains/Math.max(1e-9,tot)*100)+'% of the loss over the year.'));
+}
+const E_hr=()=>LAB.S.energy.hr||0;
+/* ---------- one floor as thermal zones (each façade side's outer band and the interior), with or without heating, cooling and opening windows ----------
+   The same ISO 13790 5R1C hourly model, per zone. Systems: none (free-running, the outdoor-air supply still runs), windows (opened when it is warm inside and cooler
+   outside), heating, heating with windows, heating and cooling. Comfort is counted in occupied hours on the operative temperature (mean of air and surfaces). */
+const T_BINS=[18,20,26,28];
+function thermalZones(prog,zs,sys){ const S=LAB.S, E=S.energy, C=LAB.CLIMATE, P=LAB.phys&&LAB.phys.prep(); if(!P) return null; const n=8760; const ms=MASS[E.mass]||MASS.medium;
+  const ops=OPS[prog]||OPS.office, sch=schedOf(OPS[prog]?prog:'office'), allDay=prog==='resi'||prog==='hotel'; const heatOn=sys==='heat'||sys==='heatwin'||sys==='full', coolOn=sys==='full', winOn=sys==='win'||sys==='heatwin';
+  const out=zs.map(z=>{ const Af=Math.max(1,z.area); const Hw=z.Agl*E.glazU, Hop=z.Aop*E.wallU+z.roof*E.roofU; const At=4.5*Af, Am=ms.am*Af, Cm=ms.cm*Af, His=3.45*At, Hms=9.1*Am, Hem=Hop>0?(Hop<Hms*0.99?1/(1/Hop-1/Hms):Hop*50):0;
+    const faces=z.sol.map(q=>({g:q.g*0.9*(E.shade||0.85),F:LAB.phys.face(q.az)})).filter(q=>q.F);
+    const To=new Float32Array(n); const bins=[0,0,0,0,0]; let occN=0, heat=0, cool=0, openH=0; const loss={glass:0,wall:0,roof:0,vent:0,infil:0}; const mon={min:new Array(12).fill(99),max:new Array(12).fill(-99),sum:new Array(12).fill(0),cnt:new Array(12).fill(0)};
+    let Tm=20; const lightOn=E.lpd*ops.lightF*0.75*Af;
+    for(let pass=0;pass<2;pass++) for(let k=pass?0:8760-336;k<n;k++){ const m=P.mon[k], Te=P.T[k]; const occ=occupied(sch,k,C); const dst=(C.tz[m]||-8)+8, clock=(k%24+dst)%24;
+      let sol=0; for(const q of faces) sol+=q.g*(q.F.sky[k]+q.F.gnd[k]+q.F.beam[k]);
+      const lightW=allDay?E.lpd*ops.lightF*Af*PROF.light[clock]:(occ?lightOn:0), equipW=E.equip*ops.eqF*Af*(allDay?PROF.equip[clock]:(occ?1:0.2)), peopleW=allDay?Af/ops.occ*75*PROF.people[clock]:(occ?Af/ops.occ*75:0); const phiInt=peopleW+lightW+equipW;
+      const Hmech=1200*(occ?E.vent/1000*Af*(1-E.hr):0), Hinf=1200*E.infil*z.vol/3600;
+      const solveH=(phiHC,Hve)=>{ const H1=1/(1/Hve+1/His), H2=H1+Hw, H3=1/(1/H2+1/Hms); const phiM0=Am/At*(0.5*phiInt+sol), phiSt0=(1-Am/At-Hw/(9.1*At))*(0.5*phiInt+sol); const phiIa=0.5*phiInt+phiHC;
+        const mtot=phiM0+Hem*Te+H3*(phiSt0+Hw*Te+H1*(phiIa/Hve+Te))/H2; const TmN=(Tm*(Cm/3600-0.5*(H3+Hem))+mtot)/(Cm/3600+0.5*(H3+Hem)); const Tmm=(TmN+Tm)/2;
+        const Ts=(Hms*Tmm+phiSt0+Hw*Te+H1*(Te+phiIa/Hve))/(Hms+Hw+H1); const Ta=(His*Ts+Hve*Te+phiIa)/(His+Hve); return {Ta,Ts,TmN}; };
+      let Hve=Hmech+Hinf, res=solveH(0,Hve), phi=0, opened=false;
+      if(winOn&&z.operable&&res.Ta>24&&Te<res.Ta-1&&Te>10&&(occ||allDay)){ Hve+=1200*z.ach*z.vol/3600; res=solveH(0,Hve); opened=true; }
+      const sH=occ?E.setH:E.setH-4, sC=occ?E.setC:E.setC+4;
+      if((heatOn&&res.Ta<sH)||(coolOn&&res.Ta>sC)){ const tgt=res.Ta<sH?sH:sC; const r10=solveH(10*Af,Hve); phi=10*Af*(tgt-res.Ta)/(r10.Ta-res.Ta); if(phi<0&&!coolOn) phi=0; if(phi>0&&!heatOn) phi=0; res=solveH(phi,Hve); }
+      Tm=res.TmN; if(!pass) continue;
+      const t=(res.Ta+res.Ts)/2; To[k]=t; if(occ){ occN++; let b=0; while(b<4&&t>=T_BINS[b]) b++; bins[b]++; }
+      if(phi>0) heat+=phi/1000; else cool-=phi/1000; if(opened) openH++;
+      const dT=res.Ta-Te; if(dT>0){ loss.glass+=Hw*dT/1000; loss.wall+=z.Aop*E.wallU*dT/1000; loss.roof+=z.roof*E.roofU*dT/1000; loss.vent+=Hmech*dT/1000; loss.infil+=Hinf*dT/1000; }
+      if(t<mon.min[m]) mon.min[m]=t; if(t>mon.max[m]) mon.max[m]=t; mon.sum[m]+=t; mon.cnt[m]++; }
+    return {key:z.key,name:z.name,area:z.area,Agl:z.Agl,Aop:z.Aop,To,bins,occN,heat,cool,openH,loss,mon:{min:mon.min,max:mon.max,mean:mon.sum.map((v,i)=>v/Math.max(1,mon.cnt[i]))},operable:z.operable}; });
+  return out; }
 function energyHTML(){
   const floors=LAB.floors; if(!floors) return ''; const r=model(floors); const E=LAB.S.energy; const names={N:'North',E:'East',S:'South',W:'West'}; const V=LAB.viz;
   return `<h2>Energy · typical year</h2><div class="kpi">${kpi('TEUI',r.teui,'kWh/m²/yr',r.tgt.teui)}${kpi('TEDI',r.tedi,'kWh/m²/yr heating demand',r.tgt.tedi)}${kpi('GHGI',r.ghgi,'kgCO₂e/m²/yr',r.tgt.ghgi)}</div>
   ${V.fig(targetBars(r),'Indicative City of Vancouver rezoning targets weighted by program.')}
+  ${r.method==='hourly'?lossHTML(r):''}
   ${r.method==='hourly'?`<div class="kpi">${kp('Peak heating',r.peakH.toFixed(0)+' W/m²','design hour of the typical year')}${kp('Peak cooling',r.peakC.toFixed(0)+' W/m²','design hour of the typical year')}${kp('Lighting saved by daylight',Math.round(r.lightShare*100)+'%',r.daylit?fmtI(r.lightSave/1000)+' MWh/yr · dimming on daytime programs':'waiting for the daylight run',r.lightShare>0.2?'ok':'')}</div>`:''}
   ${V.fig(chartSVG(r,false),'Monthly energy by end use: heating peaks in winter, cooling and fans in summer; lighting dips in the bright months where daylight dims it.')}
   ${r.method==='hourly'?V.fig(loadCarpet(r),'Heating (red) and cooling (blue) demand, W/m² of floor, by week across the year and hour of the day: night-time heating, sun-driven afternoon cooling, the setback after hours.'):''}
@@ -272,6 +319,6 @@ LAB.energy={
     LAB.controlsFor($('energy-env'),ENV_P,'en',()=>LAB.S.energy,()=>{ LAB.syncFor($('energy-env'),ENV_P,'en',LAB.S.energy); if(LAB.sim&&LAB.sim.energyChanged) LAB.sim.energyChanged(); });
     LAB.controlsFor($('energy-sys'),SYS_P,'en',()=>LAB.S.energy,()=>{ LAB.syncFor($('energy-sys'),SYS_P,'en',LAB.S.energy); if(LAB.sim&&LAB.sim.energyChanged) LAB.sim.energyChanged(); });
     LAB.syncFor($('energy-env'),ENV_P,'en',LAB.S.energy); LAB.syncFor($('energy-sys'),SYS_P,'en',LAB.S.energy); },
-  formStudy, formHTML, formReportData:formReport, energyHTML, model, modelMonthly, reportData:energyReport, TARGETS, USES, chartSVG, get last(){return last;},
+  formStudy, formHTML, formReportData:formReport, energyHTML, thermalZones, lossHTML, T_BINS, model, modelMonthly, reportData:energyReport, TARGETS, USES, chartSVG, get last(){return last;},
 };
 })();
